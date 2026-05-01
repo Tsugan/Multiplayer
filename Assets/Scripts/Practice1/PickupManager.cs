@@ -1,5 +1,7 @@
 using System.Collections;
-using Unity.Netcode;
+using FishNet;
+using FishNet.Object;
+using FishNet.Transporting;
 using UnityEngine;
 
 namespace Practice1
@@ -15,23 +17,26 @@ namespace Practice1
         {
             TrySpawnInitial();
 
-            if (NetworkManager.Singleton != null)
+            if (InstanceFinder.NetworkManager != null)
             {
-                NetworkManager.Singleton.OnServerStarted += OnServerStarted;
+                InstanceFinder.NetworkManager.ServerManager.OnServerConnectionState += OnServerConnectionState;
             }
         }
 
         private void OnDisable()
         {
-            if (NetworkManager.Singleton != null)
+            if (InstanceFinder.NetworkManager != null)
             {
-                NetworkManager.Singleton.OnServerStarted -= OnServerStarted;
+                InstanceFinder.NetworkManager.ServerManager.OnServerConnectionState -= OnServerConnectionState;
             }
         }
 
-        private void OnServerStarted()
+        private void OnServerConnectionState(ServerConnectionStateArgs args)
         {
-            TrySpawnInitial();
+            if (args.ConnectionState == LocalConnectionState.Started)
+            {
+                TrySpawnInitial();
+            }
         }
 
         private void TrySpawnInitial()
@@ -41,7 +46,7 @@ namespace Practice1
                 return;
             }
 
-            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
+            if (!InstanceFinder.IsServerStarted)
             {
                 return;
             }
@@ -68,7 +73,7 @@ namespace Practice1
 
         public void OnPickedUp(Vector3 position)
         {
-            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
+            if (!InstanceFinder.IsServerStarted)
             {
                 return;
             }
@@ -97,9 +102,9 @@ namespace Practice1
             }
 
             NetworkObject networkObject = pickup.GetComponent<NetworkObject>();
-            if (networkObject != null)
+            if (networkObject != null && InstanceFinder.ServerManager != null)
             {
-                networkObject.Spawn();
+                InstanceFinder.ServerManager.Spawn(networkObject);
             }
         }
     }

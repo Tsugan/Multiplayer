@@ -1,14 +1,22 @@
-using Unity.Netcode;
-using Unity.Netcode.Transports.UTP;
+using FishNet;
+using FishNet.Managing;
+using FishNet.Transporting.Tugboat;
+using FishNet.Transporting;
+using LiteNetLib;
+using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
 
 namespace Practice1
 {
     public class ConnectionUI : MonoBehaviour
     {
         public static string PlayerNickname { get; private set; } = "Player";
+        public static bool PredictionEnabled { get; private set; } = true;
+        public static int SimulatedLatencyMs { get; private set; }
+        private static ConnectionUI _instance;
 
         [Header("Connection UI")]
         [SerializeField] private GameObject _connectPanel;
@@ -34,6 +42,8 @@ namespace Practice1
 
         private void Awake()
         {
+            _instance = this;
+
             if (_nicknameInput != null)
             {
                 _nicknameInput.text = PlayerNickname;
@@ -60,30 +70,41 @@ namespace Practice1
             }
         }
 
+        private void OnDestroy()
+        {
+            if (_instance == this)
+            {
+                _instance = null;
+            }
+        }
+
         private void Update()
         {
-            NetworkManager manager = NetworkManager.Singleton;
+            HandleDebugHotkeys();
+
+            NetworkManager manager = InstanceFinder.NetworkManager;
             if (manager == null)
             {
                 SetPanels(true);
-                SetStatus("NetworkManager not found in scene.");
+                SetStatus("FishNet NetworkManager not found in scene.");
                 return;
             }
 
-            if (!manager.IsListening)
+            if (manager.IsOffline && !manager.ServerManager.Started && !manager.ClientManager.Started)
             {
                 SetPanels(true);
-                SetStatus("Ready to connect");
+                SetStatus("Ready to connect. F6: CSP, F7: Lag");
             }
             else
             {
                 SetPanels(false);
                 EnsureLocalReferences();
+                ApplyLatencySimulation(manager);
 
-                string mode = manager.IsHost ? "Host" : manager.IsServer ? "Server" : "Client";
+                string mode = manager.IsHostStarted ? "Host" : manager.IsServerStarted ? "Server" : manager.IsClientStarted ? "Client" : "Connecting";
                 if (_modeText != null)
                 {
-                    _modeText.text = $"Mode: {mode}";
+                    _modeText.text = $"Mode: {mode} | CSP: {(PredictionEnabled ? "ON" : "OFF")} | Lag: {SimulatedLatencyMs}ms";
                 }
 
                 if (_nicknameText != null)
@@ -130,47 +151,52 @@ namespace Practice1
 
         public void StartAsHost()
         {
-            if (NetworkManager.Singleton == null)
-            {
-                return;
-            }
-
-            SaveNickname();
-            ConfigureTransport();
-            NetworkManager.Singleton.StartHost();
-        }
-
-        public void StartAsClient()
-        {
-            if (NetworkManager.Singleton == null)
-            {
-                return;
-            }
-
-            SaveNickname();
-            ConfigureTransport();
-            NetworkManager.Singleton.StartClient();
-        }
-
-        private void ConfigureTransport()
-        {
-            NetworkManager manager = NetworkManager.Singleton;
+            NetworkManager manager = InstanceFinder.NetworkManager;
             if (manager == null)
             {
                 return;
             }
 
-            UnityTransport transport = manager.GetComponent<UnityTransport>();
-            if (transport == null)
+            SaveNickname();
+            if (ConfigureTransport(manager) == null)
             {
-                Debug.LogError("UnityTransport component is missing on NetworkManager.");
-                SetStatus("UnityTransport is missing on NetworkManager.");
                 return;
             }
 
-            if (manager.NetworkConfig.NetworkTransport == null)
+            bool serverStarted = manager.ServerManager.StartConnection();
+            if (serverStarted)
             {
-                manager.NetworkConfig.NetworkTransport = transport;
+                manager.ClientManager.StartConnection();
+                ApplyLatencySimulation(manager);
+            }
+        }
+
+        public void StartAsClient()
+        {
+            NetworkManager manager = InstanceFinder.NetworkManager;
+            if (manager == null)
+            {
+                return;
+            }
+
+            SaveNickname();
+            if (ConfigureTransport(manager) == null)
+            {
+                return;
+            }
+
+            manager.ClientManager.StartConnection();
+            ApplyLatencySimulation(manager);
+        }
+
+        private Tugboat ConfigureTransport(NetworkManager manager)
+        {
+            Tugboat transport = manager.GetComponent<Tugboat>();
+            if (transport == null)
+            {
+                Debug.LogError("Tugboat component is missing on NetworkManager.");
+                SetStatus("Tugboat is missing on NetworkManager.");
+                return null;
             }
 
             string rawAddress = _addressInput != null ? _addressInput.text : "127.0.0.1";
@@ -180,7 +206,11 @@ namespace Practice1
                 _addressInput.text = address;
             }
 
-            transport.SetConnectionData(address, _port);
+            transport.SetClientAddress(address);
+            transport.SetServerBindAddress("0.0.0.0", IPAddressType.IPv4);
+            transport.SetPort(_port);
+
+            return transport;
         }
 
         private void SaveNickname()
@@ -191,6 +221,25 @@ namespace Practice1
             {
                 _nicknameInput.text = PlayerNickname;
             }
+        }
+
+        public static string GetEffectiveNickname()
+        {
+            string uiValue = _instance != null && _instance._nicknameInput != null
+                ? _instance._nicknameInput.text
+                : string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(uiValue))
+            {
+                return uiValue.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(PlayerNickname))
+            {
+                return PlayerNickname.Trim();
+            }
+
+            return "Player";
         }
 
         private void OnAttackPressed()
@@ -270,6 +319,60 @@ namespace Practice1
             float deathTime = _localDeathTime < 0f ? Time.time : _localDeathTime;
             float left = Mathf.Max(0f, _localPlayer.RespawnDelay - (Time.time - deathTime));
             _respawnText.text = $"Respawn in: {left:0.0}s";
+        }
+
+        private void HandleDebugHotkeys()
+        {
+            if (Keyboard.current == null)
+            {
+                return;
+            }
+
+            if (Keyboard.current.f6Key.wasPressedThisFrame)
+            {
+                PredictionEnabled = !PredictionEnabled;
+                SetStatus($"CSP {(PredictionEnabled ? "enabled" : "disabled")}.");
+            }
+
+            if (Keyboard.current.f7Key.wasPressedThisFrame)
+            {
+                SimulatedLatencyMs = SimulatedLatencyMs switch
+                {
+                    0 => 200,
+                    200 => 500,
+                    _ => 0
+                };
+
+                SetStatus($"Latency simulation: {SimulatedLatencyMs}ms.");
+            }
+        }
+
+        private static void ApplyLatencySimulation(NetworkManager manager)
+        {
+            Tugboat transport = manager.GetComponent<Tugboat>();
+            if (transport == null)
+            {
+                return;
+            }
+
+            FieldInfo netManagerField = typeof(CommonSocket).GetField("NetManager", BindingFlags.Instance | BindingFlags.NonPublic);
+            ConfigureSocket(netManagerField, transport.ClientSocket);
+            ConfigureSocket(netManagerField, transport.ServerSocket);
+
+            static void ConfigureSocket(FieldInfo netManagerField, CommonSocket socketWrapper)
+            {
+                NetManager socket = netManagerField?.GetValue(socketWrapper) as NetManager;
+                if (socket == null)
+                {
+                    return;
+                }
+
+                bool enabled = SimulatedLatencyMs > 0;
+                socket.SimulateLatency = enabled;
+                socket.SimulatePacketLoss = false;
+                socket.SimulationMinLatency = SimulatedLatencyMs;
+                socket.SimulationMaxLatency = SimulatedLatencyMs;
+            }
         }
     }
 }

@@ -1,4 +1,6 @@
-using Unity.Netcode;
+using FishNet;
+using FishNet.Object;
+using FishNet.Object.Synchronizing;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -17,35 +19,34 @@ namespace Practice1
         private PlayerNetwork _playerNetwork;
         private float _lastShotServerTime = -999f;
 
-        public NetworkVariable<int> CurrentAmmo = new NetworkVariable<int>(
-            0,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
+        public readonly SyncVar<int> CurrentAmmo = new(0);
 
         private void Awake()
         {
             _playerNetwork = GetComponent<PlayerNetwork>();
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartNetwork()
         {
-            if (IsServer)
+            base.OnStartNetwork();
+
+            if (base.IsServerInitialized)
             {
                 CurrentAmmo.Value = _maxAmmo;
             }
 
-            _playerNetwork.IsAlive.OnValueChanged += OnIsAliveChanged;
+            _playerNetwork.IsAlive.OnChange += OnIsAliveChanged;
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopNetwork()
         {
-            _playerNetwork.IsAlive.OnValueChanged -= OnIsAliveChanged;
+            base.OnStopNetwork();
+            _playerNetwork.IsAlive.OnChange -= OnIsAliveChanged;
         }
 
         private void Update()
         {
-            if (!IsOwner || _playerNetwork.IsDead)
+            if (!base.IsOwner || _playerNetwork.IsDead)
             {
                 return;
             }
@@ -58,7 +59,7 @@ namespace Practice1
 
         public void TryShoot()
         {
-            if (!IsOwner || _playerNetwork.IsDead)
+            if (!base.IsOwner || _playerNetwork.IsDead)
             {
                 return;
             }
@@ -69,7 +70,7 @@ namespace Practice1
         }
 
         [ServerRpc]
-        private void ShootServerRpc(Vector3 shotPosition, Vector3 shotDirection, ServerRpcParams rpc = default)
+        private void ShootServerRpc(Vector3 shotPosition, Vector3 shotDirection)
         {
             if (_playerNetwork.HP.Value <= 0 || !_playerNetwork.IsAlive.Value)
             {
@@ -109,21 +110,20 @@ namespace Practice1
             }
 
             NetworkObject projectileNetworkObject = projectile.GetComponent<NetworkObject>();
-            if (projectileNetworkObject != null)
+            if (projectileNetworkObject != null && InstanceFinder.ServerManager != null)
             {
                 if (projectileLogic != null)
                 {
-                    projectileLogic.SetShooterClientId(rpc.Receive.SenderClientId);
+                    projectileLogic.SetShooterClientId(OwnerId);
                 }
 
-                // Keep projectile server-owned so server movement is authoritative.
-                projectileNetworkObject.Spawn();
+                InstanceFinder.ServerManager.Spawn(projectileNetworkObject);
             }
         }
 
-        private void OnIsAliveChanged(bool previous, bool next)
+        private void OnIsAliveChanged(bool previous, bool next, bool asServer)
         {
-            if (!IsServer)
+            if (!asServer)
             {
                 return;
             }

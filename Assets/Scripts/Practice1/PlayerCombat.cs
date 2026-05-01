@@ -1,4 +1,5 @@
-using Unity.Netcode;
+using FishNet;
+using FishNet.Object;
 using UnityEngine;
 
 namespace Practice1
@@ -16,7 +17,7 @@ namespace Practice1
 
         public void TryAttackNearest()
         {
-            if (!IsOwner)
+            if (!base.IsOwner)
             {
                 return;
             }
@@ -27,13 +28,14 @@ namespace Practice1
                 return;
             }
 
-            DealDamageServerRpc(target.NetworkObjectId, _damage);
+            DealDamageServerRpc(target.ObjectId, _damage);
         }
 
         [ServerRpc]
-        private void DealDamageServerRpc(ulong targetObjectId, int damage)
+        private void DealDamageServerRpc(int targetObjectId, int damage)
         {
-            if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(targetObjectId, out NetworkObject targetObject))
+            if (InstanceFinder.ServerManager == null ||
+                !InstanceFinder.ServerManager.Objects.Spawned.TryGetValue(targetObjectId, out NetworkObject targetObject))
             {
                 return;
             }

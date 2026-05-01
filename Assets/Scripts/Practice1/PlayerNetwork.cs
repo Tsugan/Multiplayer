@@ -1,34 +1,21 @@
-using System.Collections.Generic;
 using System.Collections;
-using Unity.Collections;
-using Unity.Netcode;
+using System.Collections.Generic;
+using FishNet.Connection;
+using FishNet.Object;
+using FishNet.Object.Synchronizing;
 using UnityEngine;
 
 namespace Practice1
 {
     public class PlayerNetwork : NetworkBehaviour
     {
-        private static readonly HashSet<PlayerNetwork> Players = new HashSet<PlayerNetwork>();
+        private static readonly HashSet<PlayerNetwork> Players = new();
 
         public static IEnumerable<PlayerNetwork> ActivePlayers => Players;
 
-        public NetworkVariable<FixedString32Bytes> Nickname = new NetworkVariable<FixedString32Bytes>(
-            default,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
-
-        public NetworkVariable<int> HP = new NetworkVariable<int>(
-            100,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
-
-        public NetworkVariable<bool> IsAlive = new NetworkVariable<bool>(
-            true,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
+        public readonly SyncVar<string> Nickname = new("Player");
+        public readonly SyncVar<int> HP = new(100);
+        public readonly SyncVar<bool> IsAlive = new(true);
 
         [SerializeField] private int _maxHp = 100;
         [SerializeField] private float _respawnDelay = 3f;
@@ -39,46 +26,57 @@ namespace Practice1
         private Renderer[] _renderers;
         private Collider[] _colliders;
         private bool _isRespawning;
+        private Coroutine _nicknameSyncRoutine;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartNetwork()
         {
+            base.OnStartNetwork();
+
             Players.Add(this);
             _characterController = GetComponent<CharacterController>();
-            _renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
-            _colliders = GetComponentsInChildren<Collider>(includeInactive: true);
+            _renderers = GetComponentsInChildren<Renderer>(true);
+            _colliders = GetComponentsInChildren<Collider>(true);
 
-            HP.OnValueChanged += OnHpChanged;
-            IsAlive.OnValueChanged += OnIsAliveChanged;
+            HP.OnChange += OnHpChanged;
+            IsAlive.OnChange += OnIsAliveChanged;
 
-            if (IsServer)
+            if (base.IsServerInitialized)
             {
                 IsAlive.Value = HP.Value > 0;
-            }
-            ApplyAliveVisualState(IsAlive.Value);
-
-            if (IsServer)
-            {
                 MoveToSpawnPoint();
             }
 
-            if (IsOwner)
+            ApplyAliveVisualState(IsAlive.Value);
+
+            StartNicknameSyncRoutine();
+        }
+
+        public override void OnOwnershipClient(NetworkConnection prevOwner)
+        {
+            base.OnOwnershipClient(prevOwner);
+            StartNicknameSyncRoutine();
+        }
+
+        public override void OnStopNetwork()
+        {
+            base.OnStopNetwork();
+
+            HP.OnChange -= OnHpChanged;
+            IsAlive.OnChange -= OnIsAliveChanged;
+            Players.Remove(this);
+
+            if (_nicknameSyncRoutine != null)
             {
-                SubmitNicknameServerRpc(ConnectionUI.PlayerNickname);
+                StopCoroutine(_nicknameSyncRoutine);
+                _nicknameSyncRoutine = null;
             }
         }
 
-        public override void OnNetworkDespawn()
-        {
-            HP.OnValueChanged -= OnHpChanged;
-            IsAlive.OnValueChanged -= OnIsAliveChanged;
-            Players.Remove(this);
-        }
-
-        [ServerRpc(RequireOwnership = false)]
+        [ServerRpc]
         private void SubmitNicknameServerRpc(string nickname)
         {
             string safeValue = string.IsNullOrWhiteSpace(nickname)
-                ? $"Player_{OwnerClientId}"
+                ? $"Player_{OwnerId}"
                 : nickname.Trim();
 
             Nickname.Value = safeValue;
@@ -86,9 +84,40 @@ namespace Practice1
             IsAlive.Value = HP.Value > 0;
         }
 
-        private void OnHpChanged(int previous, int next)
+        private void StartNicknameSyncRoutine()
         {
-            if (!IsServer)
+            if (_nicknameSyncRoutine != null)
+            {
+                return;
+            }
+
+            if (base.Owner == null || !base.Owner.IsLocalClient)
+            {
+                return;
+            }
+
+            _nicknameSyncRoutine = StartCoroutine(NicknameSyncRoutine());
+        }
+
+        private IEnumerator NicknameSyncRoutine()
+        {
+            while (IsSpawned && base.Owner != null && base.Owner.IsLocalClient)
+            {
+                string desiredNickname = ConnectionUI.GetEffectiveNickname();
+                if (!string.Equals(Nickname.Value, desiredNickname))
+                {
+                    SubmitNicknameServerRpc(desiredNickname);
+                }
+
+                yield return new WaitForSeconds(0.5f);
+            }
+
+            _nicknameSyncRoutine = null;
+        }
+
+        private void OnHpChanged(int previous, int next, bool asServer)
+        {
+            if (!asServer)
             {
                 return;
             }
@@ -100,7 +129,7 @@ namespace Practice1
             }
         }
 
-        private void OnIsAliveChanged(bool previous, bool next)
+        private void OnIsAliveChanged(bool previous, bool next, bool asServer)
         {
             ApplyAliveVisualState(next);
         }
@@ -122,12 +151,12 @@ namespace Practice1
             Transform[] sceneSpawnPoints = GetSceneSpawnPoints();
             if (sceneSpawnPoints != null && sceneSpawnPoints.Length > 0)
             {
-                int idx = Random.Range(0, sceneSpawnPoints.Length);
-                spawnPosition = sceneSpawnPoints[idx] != null ? sceneSpawnPoints[idx].position : transform.position;
+                int index = Random.Range(0, sceneSpawnPoints.Length);
+                spawnPosition = sceneSpawnPoints[index] != null ? sceneSpawnPoints[index].position : transform.position;
             }
             else
             {
-                int slot = (int)(OwnerClientId % 8);
+                int slot = Mathf.Abs(OwnerId % 8);
                 spawnPosition = new Vector3(-7f + slot * 2f, 1f, 0f);
             }
 
@@ -167,7 +196,7 @@ namespace Practice1
             }
 
             GameObject[] all = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-            List<Transform> named = new List<Transform>();
+            List<Transform> named = new();
             for (int i = 0; i < all.Length; i++)
             {
                 GameObject go = all[i];
@@ -207,7 +236,7 @@ namespace Practice1
 
         public void HealOnServer(int amount)
         {
-            if (!IsServer || !IsAlive.Value)
+            if (!base.IsServerInitialized || !IsAlive.Value)
             {
                 return;
             }
