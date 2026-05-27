@@ -1,4 +1,4 @@
-using Unity.Netcode;
+using FishNet.Object;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -16,7 +16,7 @@ namespace Practice1
 
         private void Update()
         {
-            if (!IsOwner)
+            if (!base.IsOwner)
             {
                 return;
             }

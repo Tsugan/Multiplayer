@@ -1,5 +1,6 @@
 using System.Collections;
-using Unity.Netcode;
+using FishNet;
+using FishNet.Object;
 using UnityEngine;
 
 namespace Practice1
@@ -14,22 +15,9 @@ namespace Practice1
         private void OnEnable()
         {
             TrySpawnInitial();
-
-            if (NetworkManager.Singleton != null)
-            {
-                NetworkManager.Singleton.OnServerStarted += OnServerStarted;
-            }
         }
 
-        private void OnDisable()
-        {
-            if (NetworkManager.Singleton != null)
-            {
-                NetworkManager.Singleton.OnServerStarted -= OnServerStarted;
-            }
-        }
-
-        private void OnServerStarted()
+        private void Update()
         {
             TrySpawnInitial();
         }
@@ -41,7 +29,7 @@ namespace Practice1
                 return;
             }
 
-            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
+            if (!InstanceFinder.IsServerStarted)
             {
                 return;
             }
@@ -68,7 +56,7 @@ namespace Practice1
 
         public void OnPickedUp(Vector3 position)
         {
-            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
+            if (!InstanceFinder.IsServerStarted)
             {
                 return;
             }
@@ -99,7 +87,7 @@ namespace Practice1
             NetworkObject networkObject = pickup.GetComponent<NetworkObject>();
             if (networkObject != null)
             {
-                networkObject.Spawn();
+                InstanceFinder.ServerManager.Spawn(networkObject);
             }
         }
     }

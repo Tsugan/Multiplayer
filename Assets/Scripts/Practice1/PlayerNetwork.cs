@@ -1,7 +1,7 @@
-using System.Collections.Generic;
 using System.Collections;
-using Unity.Collections;
-using Unity.Netcode;
+using System.Collections.Generic;
+using FishNet.Object;
+using FishNet.Object.Synchronizing;
 using UnityEngine;
 
 namespace Practice1
@@ -12,23 +12,9 @@ namespace Practice1
 
         public static IEnumerable<PlayerNetwork> ActivePlayers => Players;
 
-        public NetworkVariable<FixedString32Bytes> Nickname = new NetworkVariable<FixedString32Bytes>(
-            default,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
-
-        public NetworkVariable<int> HP = new NetworkVariable<int>(
-            100,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
-
-        public NetworkVariable<bool> IsAlive = new NetworkVariable<bool>(
-            true,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server
-        );
+        public readonly SyncVar<string> Nickname = new SyncVar<string>("Player");
+        public readonly SyncVar<int> HP = new SyncVar<int>(100);
+        public readonly SyncVar<bool> IsAlive = new SyncVar<bool>(true);
 
         [SerializeField] private int _maxHp = 100;
         [SerializeField] private float _respawnDelay = 3f;
@@ -40,45 +26,56 @@ namespace Practice1
         private Collider[] _colliders;
         private bool _isRespawning;
 
-        public override void OnNetworkSpawn()
+        private void Awake()
         {
-            Players.Add(this);
             _characterController = GetComponent<CharacterController>();
             _renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
             _colliders = GetComponentsInChildren<Collider>(includeInactive: true);
 
-            HP.OnValueChanged += OnHpChanged;
-            IsAlive.OnValueChanged += OnIsAliveChanged;
+            HP.OnChange += OnHpChanged;
+            IsAlive.OnChange += OnIsAliveChanged;
+        }
 
-            if (IsServer)
-            {
-                IsAlive.Value = HP.Value > 0;
-            }
+        private void OnDestroy()
+        {
+            HP.OnChange -= OnHpChanged;
+            IsAlive.OnChange -= OnIsAliveChanged;
+            Players.Remove(this);
+        }
+
+        public override void OnStartNetwork()
+        {
+            Players.Add(this);
+            ApplyAliveVisualState(IsAlive.Value);
+        }
+
+        public override void OnStopNetwork()
+        {
+            Players.Remove(this);
+        }
+
+        public override void OnStartServer()
+        {
+            HP.Value = Mathf.Clamp(HP.Value, 0, _maxHp);
+            IsAlive.Value = HP.Value > 0;
+            MoveToSpawnPoint();
+        }
+
+        public override void OnStartClient()
+        {
             ApplyAliveVisualState(IsAlive.Value);
 
-            if (IsServer)
-            {
-                MoveToSpawnPoint();
-            }
-
-            if (IsOwner)
+            if (base.IsOwner)
             {
                 SubmitNicknameServerRpc(ConnectionUI.PlayerNickname);
             }
-        }
-
-        public override void OnNetworkDespawn()
-        {
-            HP.OnValueChanged -= OnHpChanged;
-            IsAlive.OnValueChanged -= OnIsAliveChanged;
-            Players.Remove(this);
         }
 
         [ServerRpc(RequireOwnership = false)]
         private void SubmitNicknameServerRpc(string nickname)
         {
             string safeValue = string.IsNullOrWhiteSpace(nickname)
-                ? $"Player_{OwnerClientId}"
+                ? $"Player_{OwnerId}"
                 : nickname.Trim();
 
             Nickname.Value = safeValue;
@@ -86,9 +83,9 @@ namespace Practice1
             IsAlive.Value = HP.Value > 0;
         }
 
-        private void OnHpChanged(int previous, int next)
+        private void OnHpChanged(int previous, int next, bool asServer)
         {
-            if (!IsServer)
+            if (!asServer || !base.IsServerInitialized)
             {
                 return;
             }
@@ -100,7 +97,7 @@ namespace Practice1
             }
         }
 
-        private void OnIsAliveChanged(bool previous, bool next)
+        private void OnIsAliveChanged(bool previous, bool next, bool asServer)
         {
             ApplyAliveVisualState(next);
         }
@@ -127,7 +124,7 @@ namespace Practice1
             }
             else
             {
-                int slot = (int)(OwnerClientId % 8);
+                int slot = OwnerId < 0 ? 0 : OwnerId % 8;
                 spawnPosition = new Vector3(-7f + slot * 2f, 1f, 0f);
             }
 
@@ -207,7 +204,7 @@ namespace Practice1
 
         public void HealOnServer(int amount)
         {
-            if (!IsServer || !IsAlive.Value)
+            if (!base.IsServerInitialized || !IsAlive.Value)
             {
                 return;
             }

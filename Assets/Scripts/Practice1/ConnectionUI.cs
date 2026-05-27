@@ -1,7 +1,10 @@
-using Unity.Netcode;
-using Unity.Netcode.Transports.UTP;
+using FishNet;
+using FishNet.Managing;
+using FishNet.Managing.Transporting;
+using FishNet.Transporting;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Practice1
@@ -28,9 +31,12 @@ namespace Practice1
 
         [SerializeField] private ushort _port = 7777;
 
+        private static readonly long[] LatencyPresets = { 0L, 200L, 500L };
+
         private PlayerShooting _localShooting;
         private PlayerNetwork _localPlayer;
         private float _localDeathTime = -1f;
+        private int _latencyPresetIndex;
 
         private void Awake()
         {
@@ -62,115 +68,117 @@ namespace Practice1
 
         private void Update()
         {
-            NetworkManager manager = NetworkManager.Singleton;
+            NetworkManager manager = InstanceFinder.NetworkManager;
             if (manager == null)
             {
                 SetPanels(true);
-                SetStatus("NetworkManager not found in scene.");
+                SetStatus("FishNet NetworkManager not found in scene.");
                 return;
             }
 
-            if (!manager.IsListening)
+            if (InstanceFinder.IsOffline)
             {
+                _localPlayer = null;
+                _localShooting = null;
+                _localDeathTime = -1f;
                 SetPanels(true);
                 SetStatus("Ready to connect");
+                return;
             }
-            else
+
+            SetPanels(false);
+            HandlePracticeDebugInput(manager);
+            EnsureLocalReferences();
+
+            string mode = InstanceFinder.IsHostStarted
+                ? "Host"
+                : InstanceFinder.IsServerOnlyStarted
+                    ? "Server"
+                    : "Client";
+
+            if (_modeText != null)
             {
-                SetPanels(false);
-                EnsureLocalReferences();
+                _modeText.text = BuildModeText(manager, mode);
+            }
 
-                string mode = manager.IsHost ? "Host" : manager.IsServer ? "Server" : "Client";
-                if (_modeText != null)
+            if (_nicknameText != null)
+            {
+                _nicknameText.text = $"Nickname: {PlayerNickname}";
+            }
+
+            if (_attackButton != null && _localPlayer != null)
+            {
+                _attackButton.interactable =
+                    _localShooting != null &&
+                    _localPlayer.IsAlive.Value &&
+                    _localShooting.HasAmmo;
+            }
+
+            if (_ammoText != null)
+            {
+                _ammoText.text = _localShooting == null
+                    ? "Ammo: -"
+                    : $"Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo}";
+            }
+
+            UpdateRespawnUi();
+
+            if (_localPlayer != null)
+            {
+                bool dead = !_localPlayer.IsAlive.Value;
+                if (dead && _localDeathTime < 0f)
                 {
-                    _modeText.text = $"Mode: {mode}";
+                    _localDeathTime = Time.time;
                 }
-
-                if (_nicknameText != null)
+                else if (!dead)
                 {
-                    _nicknameText.text = $"Nickname: {PlayerNickname}";
-                }
-
-                if (_attackButton != null && _localPlayer != null)
-                {
-                    _attackButton.interactable =
-                        _localShooting != null &&
-                        _localPlayer.IsAlive.Value &&
-                        _localShooting.HasAmmo;
-                }
-
-                if (_ammoText != null)
-                {
-                    if (_localShooting == null)
-                    {
-                        _ammoText.text = "Ammo: -";
-                    }
-                    else
-                    {
-                        _ammoText.text = $"Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo}";
-                    }
-                }
-
-                UpdateRespawnUi();
-
-                if (_localPlayer != null)
-                {
-                    bool dead = !_localPlayer.IsAlive.Value;
-                    if (dead && _localDeathTime < 0f)
-                    {
-                        _localDeathTime = Time.time;
-                    }
-                    else if (!dead)
-                    {
-                        _localDeathTime = -1f;
-                    }
+                    _localDeathTime = -1f;
                 }
             }
         }
 
         public void StartAsHost()
         {
-            if (NetworkManager.Singleton == null)
+            if (InstanceFinder.NetworkManager == null)
             {
                 return;
             }
 
             SaveNickname();
             ConfigureTransport();
-            NetworkManager.Singleton.StartHost();
+            InstanceFinder.ServerManager.StartConnection();
+            InstanceFinder.ClientManager.StartConnection();
         }
 
         public void StartAsClient()
         {
-            if (NetworkManager.Singleton == null)
+            if (InstanceFinder.NetworkManager == null)
             {
                 return;
             }
 
             SaveNickname();
             ConfigureTransport();
-            NetworkManager.Singleton.StartClient();
+            InstanceFinder.ClientManager.StartConnection();
         }
 
         private void ConfigureTransport()
         {
-            NetworkManager manager = NetworkManager.Singleton;
+            NetworkManager manager = InstanceFinder.NetworkManager;
             if (manager == null)
             {
                 return;
             }
 
-            UnityTransport transport = manager.GetComponent<UnityTransport>();
+            Transport transport = manager.TransportManager != null
+                ? manager.TransportManager.Transport
+                : manager.GetComponent<Transport>();
+
             if (transport == null)
             {
-                Debug.LogError("UnityTransport component is missing on NetworkManager.");
-                SetStatus("UnityTransport is missing on NetworkManager.");
+                Debug.LogError("FishNet Transport component is missing on NetworkManager.");
+                SetStatus("FishNet Transport is missing on NetworkManager.");
                 return;
-            }
-
-            if (manager.NetworkConfig.NetworkTransport == null)
-            {
-                manager.NetworkConfig.NetworkTransport = transport;
             }
 
             string rawAddress = _addressInput != null ? _addressInput.text : "127.0.0.1";
@@ -180,7 +188,8 @@ namespace Practice1
                 _addressInput.text = address;
             }
 
-            transport.SetConnectionData(address, _port);
+            transport.SetClientAddress(address);
+            transport.SetPort(_port);
         }
 
         private void SaveNickname()
@@ -191,6 +200,57 @@ namespace Practice1
             {
                 _nicknameInput.text = PlayerNickname;
             }
+        }
+
+        private static string BuildModeText(NetworkManager manager, string mode)
+        {
+            long pingMs = manager != null && manager.TimeManager != null
+                ? manager.TimeManager.RoundTripTime
+                : 0L;
+
+            string predictionState = PlayerMovement.ClientSidePredictionEnabled ? "on" : "off";
+            if (manager == null || manager.TransportManager == null)
+            {
+                return $"Mode: {mode} | Ping: {pingMs} ms | CSP: {predictionState}";
+            }
+
+            LatencySimulator latencySimulator = manager.TransportManager.LatencySimulator;
+            string simulatorState = latencySimulator.GetEnabled()
+                ? $"{latencySimulator.GetLatency()} ms"
+                : "off";
+
+            return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState}";
+        }
+
+        private void HandlePracticeDebugInput(NetworkManager manager)
+        {
+            if (Keyboard.current == null)
+            {
+                return;
+            }
+
+            if (Keyboard.current.f6Key.wasPressedThisFrame)
+            {
+                PlayerMovement.SetClientSidePredictionEnabled(!PlayerMovement.ClientSidePredictionEnabled);
+            }
+
+            if (Keyboard.current.f7Key.wasPressedThisFrame)
+            {
+                _latencyPresetIndex = (_latencyPresetIndex + 1) % LatencyPresets.Length;
+                ApplyLatencyPreset(manager, LatencyPresets[_latencyPresetIndex]);
+            }
+        }
+
+        private static void ApplyLatencyPreset(NetworkManager manager, long latencyMs)
+        {
+            if (manager == null || manager.TransportManager == null)
+            {
+                return;
+            }
+
+            LatencySimulator latencySimulator = manager.TransportManager.LatencySimulator;
+            latencySimulator.SetLatency(latencyMs);
+            latencySimulator.SetEnabled(latencyMs > 0L);
         }
 
         private void OnAttackPressed()
@@ -256,14 +316,9 @@ namespace Practice1
 
             if (_localPlayer.IsAlive.Value)
             {
-                if (_localShooting != null && !_localShooting.HasAmmo)
-                {
-                    _respawnText.text = "No ammo. Respawn to refill.";
-                }
-                else
-                {
-                    _respawnText.text = string.Empty;
-                }
+                _respawnText.text = _localShooting != null && !_localShooting.HasAmmo
+                    ? "No ammo. Respawn to refill."
+                    : string.Empty;
                 return;
             }
 

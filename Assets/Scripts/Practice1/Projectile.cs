@@ -1,4 +1,4 @@
-using Unity.Netcode;
+using FishNet.Object;
 using UnityEngine;
 
 namespace Practice1
@@ -10,7 +10,7 @@ namespace Practice1
         [SerializeField] private float _lifetime = 4f;
 
         private float _spawnTime;
-        private ulong _shooterClientId;
+        private int _shooterClientId = -1;
         private Rigidbody _rigidbody;
 
         private void Awake()
@@ -18,10 +18,10 @@ namespace Practice1
             _rigidbody = GetComponent<Rigidbody>();
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartNetwork()
         {
             _spawnTime = Time.time;
-            if (!IsServer)
+            if (!base.IsServerInitialized)
             {
                 return;
             }
@@ -34,7 +34,7 @@ namespace Practice1
 
         private void FixedUpdate()
         {
-            if (!IsServer)
+            if (!base.IsServerInitialized)
             {
                 return;
             }
@@ -50,7 +50,7 @@ namespace Practice1
 
             if (Time.time >= _spawnTime + _lifetime && NetworkObject != null && NetworkObject.IsSpawned)
             {
-                NetworkObject.Despawn(destroy: true);
+                base.ServerManager.Despawn(NetworkObject, DespawnType.Destroy);
             }
         }
 
@@ -60,14 +60,14 @@ namespace Practice1
             _damage = damage;
         }
 
-        public void SetShooterClientId(ulong shooterClientId)
+        public void SetShooterClientId(int shooterClientId)
         {
             _shooterClientId = shooterClientId;
         }
 
         private void OnTriggerEnter(Collider other)
         {
-            if (!IsServer)
+            if (!base.IsServerInitialized)
             {
                 return;
             }
@@ -78,7 +78,7 @@ namespace Practice1
                 return;
             }
 
-            if (target.OwnerClientId == _shooterClientId)
+            if (target.OwnerId == _shooterClientId)
             {
                 return;
             }
@@ -88,7 +88,7 @@ namespace Practice1
 
             if (NetworkObject != null && NetworkObject.IsSpawned)
             {
-                NetworkObject.Despawn(destroy: true);
+                base.ServerManager.Despawn(NetworkObject, DespawnType.Destroy);
             }
         }
     }

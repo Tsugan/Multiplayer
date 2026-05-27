@@ -1,5 +1,4 @@
-using Unity.Collections;
-using Unity.Netcode;
+using FishNet.Object;
 using TMPro;
 using UnityEngine;
 
@@ -20,20 +19,20 @@ namespace Practice1
             _playerNetwork = GetComponent<PlayerNetwork>();
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartNetwork()
         {
-            _playerNetwork.Nickname.OnValueChanged += OnNicknameChanged;
-            _playerNetwork.HP.OnValueChanged += OnHpChanged;
+            _playerNetwork.Nickname.OnChange += OnNicknameChanged;
+            _playerNetwork.HP.OnChange += OnHpChanged;
 
-            OnNicknameChanged(default, _playerNetwork.Nickname.Value);
-            OnHpChanged(0, _playerNetwork.HP.Value);
+            OnNicknameChanged(string.Empty, _playerNetwork.Nickname.Value, false);
+            OnHpChanged(0, _playerNetwork.HP.Value, false);
             EnsureLabel();
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopNetwork()
         {
-            _playerNetwork.Nickname.OnValueChanged -= OnNicknameChanged;
-            _playerNetwork.HP.OnValueChanged -= OnHpChanged;
+            _playerNetwork.Nickname.OnChange -= OnNicknameChanged;
+            _playerNetwork.HP.OnChange -= OnHpChanged;
 
             if (_labelRect != null)
             {
@@ -83,13 +82,13 @@ namespace Practice1
             }
         }
 
-        private void OnNicknameChanged(FixedString32Bytes oldValue, FixedString32Bytes newValue)
+        private void OnNicknameChanged(string oldValue, string newValue, bool asServer)
         {
-            _nicknameValue = newValue.ToString();
+            _nicknameValue = newValue;
             RefreshLabelText();
         }
 
-        private void OnHpChanged(int oldValue, int newValue)
+        private void OnHpChanged(int oldValue, int newValue, bool asServer)
         {
             _hpValue = newValue;
             RefreshLabelText();
@@ -108,7 +107,7 @@ namespace Practice1
                 return;
             }
 
-            GameObject labelObject = new GameObject($"PlayerLabel_{NetworkObjectId}", typeof(RectTransform), typeof(TextMeshProUGUI));
+            GameObject labelObject = new GameObject($"PlayerLabel_{ObjectId}", typeof(RectTransform), typeof(TextMeshProUGUI));
             labelObject.transform.SetParent(_uiCanvas.transform, false);
 
             _labelRect = labelObject.GetComponent<RectTransform>();
