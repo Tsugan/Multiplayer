@@ -86,7 +86,7 @@ namespace Practice1
 
         private void OnTick()
         {
-            bool canMove = _playerNetwork != null && !_playerNetwork.IsDead;
+            bool canMove = _playerNetwork != null && !_playerNetwork.IsDead && GameManager.IsGameplayActive;
             bool replicated = false;
             bool waitsForServerMovement = false;
 

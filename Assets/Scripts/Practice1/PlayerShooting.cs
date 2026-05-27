@@ -43,7 +43,7 @@ namespace Practice1
 
         private void Update()
         {
-            if (!base.IsOwner || _playerNetwork.IsDead)
+            if (!base.IsOwner || _playerNetwork.IsDead || !GameManager.IsGameplayActive)
             {
                 return;
             }
@@ -56,7 +56,7 @@ namespace Practice1
 
         public void TryShoot()
         {
-            if (!base.IsOwner || _playerNetwork.IsDead)
+            if (!base.IsOwner || _playerNetwork.IsDead || !GameManager.IsGameplayActive)
             {
                 return;
             }
@@ -69,6 +69,11 @@ namespace Practice1
         [ServerRpc]
         private void ShootServerRpc(Vector3 shotPosition, Vector3 shotDirection, NetworkConnection sender = null)
         {
+            if (!GameManager.IsGameplayActive)
+            {
+                return;
+            }
+
             if (_playerNetwork.HP.Value <= 0 || !_playerNetwork.IsAlive.Value)
             {
                 return;
@@ -112,6 +117,17 @@ namespace Practice1
             {
                 base.ServerManager.Spawn(projectileNetworkObject, sender);
             }
+        }
+
+        public void ResetAmmoOnServer()
+        {
+            if (!base.IsServerInitialized)
+            {
+                return;
+            }
+
+            CurrentAmmo.Value = _maxAmmo;
+            _lastShotServerTime = -999f;
         }
 
         private void OnIsAliveChanged(bool previous, bool next, bool asServer)

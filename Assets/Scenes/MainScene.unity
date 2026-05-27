@@ -3383,6 +3383,8 @@ GameObject:
   - component: {fileID: 2035302746}
   - component: {fileID: 2035302741}
   - component: {fileID: 2035302744}
+  - component: {fileID: 2035302747}
+  - component: {fileID: 2035302748}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -3486,6 +3488,37 @@ MonoBehaviour:
   _playerPrefab: {fileID: 1656979142419317421, guid: df86b7291a9e2d448b76b2cf0b9a7fb4, type: 3}
   _addToDefaultScene: 1
   Spawns: []
+--- !u!114 &2035302747
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2035302740}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e8d326f04e94104b918d7f6a2d7b8cc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Practice1.GameManager
+  _requiredPlayers: 2
+  _matchDuration: 60
+  _lobbyStartDelay: 3
+  _resultsDuration: 5
+  _scoreToWin: 3
+  _broadcastInterval: 0.25
+--- !u!114 &2035302748
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2035302740}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2bbf1bc18f54124a96f39d03fe2c44d, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Practice1.ServerAutoStart
+  _port: 7777
 --- !u!4 &2035302743
 Transform:
   m_ObjectHideFlags: 0

@@ -15,6 +15,7 @@ namespace Practice1
         public readonly SyncVar<string> Nickname = new SyncVar<string>("Player");
         public readonly SyncVar<int> HP = new SyncVar<int>(100);
         public readonly SyncVar<bool> IsAlive = new SyncVar<bool>(true);
+        public readonly SyncVar<int> Score = new SyncVar<int>(0);
 
         [SerializeField] private int _maxHp = 100;
         [SerializeField] private float _respawnDelay = 3f;
@@ -24,6 +25,7 @@ namespace Practice1
         private CharacterController _characterController;
         private Renderer[] _renderers;
         private Collider[] _colliders;
+        private Coroutine _respawnRoutine;
         private bool _isRespawning;
 
         private void Awake()
@@ -93,7 +95,7 @@ namespace Practice1
             if (next <= 0 && IsAlive.Value && !_isRespawning)
             {
                 IsAlive.Value = false;
-                StartCoroutine(RespawnRoutine());
+                _respawnRoutine = StartCoroutine(RespawnRoutine());
             }
         }
 
@@ -111,6 +113,7 @@ namespace Practice1
             HP.Value = _maxHp;
             IsAlive.Value = true;
             _isRespawning = false;
+            _respawnRoutine = null;
         }
 
         private void MoveToSpawnPoint()
@@ -210,6 +213,59 @@ namespace Practice1
             }
 
             HP.Value = Mathf.Clamp(HP.Value + Mathf.Max(0, amount), 0, _maxHp);
+        }
+
+        public void ApplyDamageOnServer(int amount, int attackerOwnerId)
+        {
+            if (!base.IsServerInitialized || !IsAlive.Value || !GameManager.IsGameplayActive)
+            {
+                return;
+            }
+
+            int sanitizedDamage = Mathf.Max(0, amount);
+            if (sanitizedDamage <= 0)
+            {
+                return;
+            }
+
+            int previousHp = HP.Value;
+            int nextHp = Mathf.Max(0, previousHp - sanitizedDamage);
+            if (previousHp > 0 && nextHp <= 0 && attackerOwnerId >= 0 && attackerOwnerId != OwnerId)
+            {
+                GameManager.Instance?.AddScoreForClient(attackerOwnerId, 1);
+            }
+
+            HP.Value = nextHp;
+        }
+
+        public void ResetForMatchOnServer(bool resetScore)
+        {
+            if (!base.IsServerInitialized)
+            {
+                return;
+            }
+
+            if (_respawnRoutine != null)
+            {
+                StopCoroutine(_respawnRoutine);
+                _respawnRoutine = null;
+            }
+
+            _isRespawning = false;
+            MoveToSpawnPoint();
+            HP.Value = _maxHp;
+            IsAlive.Value = true;
+
+            if (resetScore)
+            {
+                Score.Value = 0;
+            }
+
+            PlayerShooting shooting = GetComponent<PlayerShooting>();
+            if (shooting != null)
+            {
+                shooting.ResetAmmoOnServer();
+            }
         }
 
         public int MaxHp => _maxHp;

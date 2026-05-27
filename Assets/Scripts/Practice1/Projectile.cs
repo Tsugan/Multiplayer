@@ -83,8 +83,7 @@ namespace Practice1
                 return;
             }
 
-            int nextHp = Mathf.Max(0, target.HP.Value - _damage);
-            target.HP.Value = nextHp;
+            target.ApplyDamageOnServer(_damage, _shooterClientId);
 
             if (NetworkObject != null && NetworkObject.IsSpawned)
             {

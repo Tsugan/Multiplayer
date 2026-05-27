@@ -111,14 +111,15 @@ namespace Practice1
                 _attackButton.interactable =
                     _localShooting != null &&
                     _localPlayer.IsAlive.Value &&
-                    _localShooting.HasAmmo;
+                    _localShooting.HasAmmo &&
+                    GameManager.IsGameplayActive;
             }
 
             if (_ammoText != null)
             {
                 _ammoText.text = _localShooting == null
                     ? "Ammo: -"
-                    : $"Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo}";
+                    : $"Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo} | Score: {(_localPlayer == null ? 0 : _localPlayer.Score.Value)}";
             }
 
             UpdateRespawnUi();
@@ -219,7 +220,13 @@ namespace Practice1
                 ? $"{latencySimulator.GetLatency()} ms"
                 : "off";
 
-            return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState}";
+            GameManager gameManager = GameManager.Instance;
+            if (gameManager == null)
+            {
+                return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState}";
+            }
+
+            return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState} | State: {gameManager.CurrentState} | Players: {gameManager.ConnectedPlayers}/{gameManager.RequiredPlayers} | Time: {gameManager.MatchTimeLeft:0}s";
         }
 
         private void HandlePracticeDebugInput(NetworkManager manager)
@@ -256,7 +263,7 @@ namespace Practice1
         private void OnAttackPressed()
         {
             EnsureLocalReferences();
-            if (_localShooting != null)
+            if (_localShooting != null && GameManager.IsGameplayActive)
             {
                 _localShooting.TryShoot();
             }
@@ -314,6 +321,11 @@ namespace Practice1
                 return;
             }
 
+            if (TryUpdateMatchStateUi())
+            {
+                return;
+            }
+
             if (_localPlayer.IsAlive.Value)
             {
                 _respawnText.text = _localShooting != null && !_localShooting.HasAmmo
@@ -325,6 +337,29 @@ namespace Practice1
             float deathTime = _localDeathTime < 0f ? Time.time : _localDeathTime;
             float left = Mathf.Max(0f, _localPlayer.RespawnDelay - (Time.time - deathTime));
             _respawnText.text = $"Respawn in: {left:0.0}s";
+        }
+
+        private bool TryUpdateMatchStateUi()
+        {
+            GameManager gameManager = GameManager.Instance;
+            if (gameManager == null)
+            {
+                return false;
+            }
+
+            switch (gameManager.CurrentState)
+            {
+                case GameState.WaitingForPlayers:
+                    _respawnText.text = gameManager.ConnectedPlayers < gameManager.RequiredPlayers
+                        ? $"Waiting for players: {gameManager.ConnectedPlayers}/{gameManager.RequiredPlayers}"
+                        : $"Match starts in: {gameManager.StartCountdown:0.0}s";
+                    return true;
+                case GameState.ShowingResults:
+                    _respawnText.text = $"Results\n{gameManager.ResultsText}\nLobby in: {gameManager.ResultsTimeLeft:0.0}s";
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

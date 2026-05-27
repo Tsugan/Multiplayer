@@ -16,7 +16,7 @@ namespace Practice1
 
         public void TryAttackNearest()
         {
-            if (!base.IsOwner)
+            if (!base.IsOwner || !GameManager.IsGameplayActive)
             {
                 return;
             }
@@ -33,6 +33,11 @@ namespace Practice1
         [ServerRpc]
         private void DealDamageServerRpc(int targetObjectId, int damage)
         {
+            if (!GameManager.IsGameplayActive)
+            {
+                return;
+            }
+
             if (!base.ServerManager.Objects.Spawned.TryGetValue(targetObjectId, out NetworkObject targetObject))
             {
                 return;
@@ -45,8 +50,7 @@ namespace Practice1
             }
 
             int sanitizedDamage = Mathf.Max(0, damage);
-            int nextHp = Mathf.Max(0, targetPlayer.HP.Value - sanitizedDamage);
-            targetPlayer.HP.Value = nextHp;
+            targetPlayer.ApplyDamageOnServer(sanitizedDamage, OwnerId);
         }
 
         private PlayerNetwork FindNearestTarget()
