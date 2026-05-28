@@ -110,6 +110,8 @@ namespace Practice1
                 Replicate(_serverAuthoritativeMoveData);
                 _hasServerAuthoritativeMoveData = false;
                 replicated = true;
+
+                ApplyServerAuthoritativeTransformObserversRpc(transform.position, _verticalVelocity, Channel.Unreliable);
             }
 
             if (!replicated && !waitsForServerMovement)
@@ -178,14 +180,30 @@ namespace Practice1
         [Reconcile]
         private void Reconcile(ReconcileData data, Channel channel = Channel.Unreliable)
         {
+            ApplyAuthoritativeTransform(data.Position, data.VerticalVelocity);
+        }
+
+        [ObserversRpc(ExcludeServer = true)]
+        private void ApplyServerAuthoritativeTransformObserversRpc(Vector3 position, float verticalVelocity, Channel channel = Channel.Unreliable)
+        {
+            if (base.IsOwner && ClientSidePredictionEnabled)
+            {
+                return;
+            }
+
+            ApplyAuthoritativeTransform(position, verticalVelocity);
+        }
+
+        private void ApplyAuthoritativeTransform(Vector3 position, float verticalVelocity)
+        {
             bool restoreCharacterController = _characterController != null && _characterController.enabled;
             if (restoreCharacterController)
             {
                 _characterController.enabled = false;
             }
 
-            transform.position = data.Position;
-            _verticalVelocity = data.VerticalVelocity;
+            transform.position = position;
+            _verticalVelocity = verticalVelocity;
 
             if (restoreCharacterController)
             {
