@@ -64,6 +64,8 @@ namespace Practice1
             {
                 _attackButton.onClick.AddListener(OnAttackPressed);
             }
+
+            ConfigureGameplayHudLayout();
         }
 
         private void Update()
@@ -226,7 +228,38 @@ namespace Practice1
                 return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState}";
             }
 
-            return $"Mode: {mode} | Ping: {pingMs} ms | Lag sim: {simulatorState} | CSP: {predictionState} | State: {gameManager.CurrentState} | Players: {gameManager.ConnectedPlayers}/{gameManager.RequiredPlayers} | Time: {gameManager.MatchTimeLeft:0}s";
+            return
+                $"Mode: {mode} | Ping: {pingMs} ms | Lag: {simulatorState} | CSP: {predictionState}\n" +
+                $"State: {gameManager.CurrentState} | Players: {gameManager.ConnectedPlayers}/{gameManager.RequiredPlayers} | Time: {gameManager.MatchTimeLeft:0}s";
+        }
+
+        private void ConfigureGameplayHudLayout()
+        {
+            ConfigureHudText(_modeText, new Vector2(16f, -12f), new Vector2(470f, 52f), 17f);
+            ConfigureHudText(_nicknameText, new Vector2(16f, -68f), new Vector2(470f, 24f), 18f);
+            ConfigureHudText(_ammoText, new Vector2(16f, -96f), new Vector2(470f, 24f), 18f);
+            ConfigureHudText(_respawnText, new Vector2(16f, -132f), new Vector2(470f, 84f), 21f);
+        }
+
+        private static void ConfigureHudText(TMP_Text text, Vector2 anchoredPosition, Vector2 size, float fontSize)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            text.alignment = TextAlignmentOptions.TopLeft;
+            text.enableAutoSizing = false;
+            text.fontSize = fontSize;
+            text.lineSpacing = -10f;
+            text.overflowMode = TextOverflowModes.Overflow;
         }
 
         private void HandlePracticeDebugInput(NetworkManager manager)
