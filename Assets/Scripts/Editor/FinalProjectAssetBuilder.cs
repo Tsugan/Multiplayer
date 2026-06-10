@@ -27,6 +27,9 @@ namespace Practice1.Editor
             Material hazard = CreateMaterial("M_HazardYellow", new Color(0.95f, 0.72f, 0.1f));
             Material cable = CreateMaterial("M_CableBlack", new Color(0.01f, 0.01f, 0.012f));
             Material disposal = CreateMaterial("M_DisposalCyan", new Color(0.08f, 0.68f, 0.95f));
+            CreateMaterial("M_ArenaBackdrop", new Color(0.015f, 0.024f, 0.032f));
+            CreateMaterial("M_ArenaTrim", new Color(0.52f, 0.58f, 0.62f));
+            CreateMaterial("M_ArenaLightPanel", new Color(0.08f, 0.88f, 1f));
             CreateMaterial("M_PlayerSuit", new Color(0.08f, 0.23f, 0.18f));
             CreateMaterial("M_PlayerArmor", new Color(0.04f, 0.05f, 0.055f));
             CreateMaterial("M_PlayerVisor", new Color(0.12f, 0.65f, 0.9f));
@@ -57,15 +60,34 @@ namespace Practice1.Editor
             Material cover = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_CableBlack.mat");
             Material hazard = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_HazardYellow.mat");
             Material disposal = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_DisposalCyan.mat");
+            Material backdrop = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_ArenaBackdrop.mat");
+            Material trim = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_ArenaTrim.mat");
+            Material lightPanel = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_ArenaLightPanel.mat");
 
             GameObject root = new GameObject(FinalProjectSceneBootstrap.SceneRootName);
             Undo.RegisterCreatedObjectUndo(root, "Bake final project objects");
 
             CreateSceneCube(root.transform, "ArenaFloor", new Vector3(0f, -0.12f, 1f), new Vector3(20f, 0.2f, 24f), floor);
-            CreateSceneCube(root.transform, "NorthWall", new Vector3(0f, 1f, 13f), new Vector3(21f, 2f, 0.5f), wall);
-            CreateSceneCube(root.transform, "SouthWall", new Vector3(0f, 1f, -11f), new Vector3(21f, 2f, 0.5f), wall);
-            CreateSceneCube(root.transform, "WestWall", new Vector3(-10f, 1f, 1f), new Vector3(0.5f, 2f, 24f), wall);
-            CreateSceneCube(root.transform, "EastWall", new Vector3(10f, 1f, 1f), new Vector3(0.5f, 2f, 24f), wall);
+            CreateSceneCube(root.transform, "NorthWall", new Vector3(0f, 1.8f, 13f), new Vector3(21f, 3.6f, 0.5f), wall);
+            CreateSceneCube(root.transform, "SouthWall", new Vector3(0f, 1.8f, -11f), new Vector3(21f, 3.6f, 0.5f), wall);
+            CreateSceneCube(root.transform, "WestWall", new Vector3(-10f, 1.8f, 1f), new Vector3(0.5f, 3.6f, 24f), wall);
+            CreateSceneCube(root.transform, "EastWall", new Vector3(10f, 1.8f, 1f), new Vector3(0.5f, 3.6f, 24f), wall);
+
+            CreateSceneCube(root.transform, "OuterNorthBlastWall", new Vector3(0f, 4.8f, 15.2f), new Vector3(27f, 9.6f, 0.65f), backdrop);
+            CreateSceneCube(root.transform, "OuterSouthBlastWall", new Vector3(0f, 4.8f, -13.2f), new Vector3(27f, 9.6f, 0.65f), backdrop);
+            CreateSceneCube(root.transform, "OuterWestBlastWall", new Vector3(-12.7f, 4.8f, 1f), new Vector3(0.65f, 9.6f, 29f), backdrop);
+            CreateSceneCube(root.transform, "OuterEastBlastWall", new Vector3(12.7f, 4.8f, 1f), new Vector3(0.65f, 9.6f, 29f), backdrop);
+            CreateSceneCube(root.transform, "NorthHorizonBlocker", new Vector3(0f, 7.5f, 19.5f), new Vector3(40f, 15f, 0.7f), backdrop);
+
+            CreateSceneCube(root.transform, "NorthLightStrip", new Vector3(0f, 3.75f, 12.68f), new Vector3(15.5f, 0.12f, 0.08f), lightPanel);
+            CreateSceneCube(root.transform, "SouthLightStrip", new Vector3(0f, 3.75f, -10.68f), new Vector3(15.5f, 0.12f, 0.08f), lightPanel);
+            CreateSceneCube(root.transform, "WestLightStrip", new Vector3(-9.68f, 3.75f, 1f), new Vector3(0.08f, 0.12f, 18f), lightPanel);
+            CreateSceneCube(root.transform, "EastLightStrip", new Vector3(9.68f, 3.75f, 1f), new Vector3(0.08f, 0.12f, 18f), lightPanel);
+
+            CreateSceneCube(root.transform, "NorthWallTopTrim", new Vector3(0f, 3.65f, 13f), new Vector3(21.4f, 0.22f, 0.7f), trim);
+            CreateSceneCube(root.transform, "SouthWallTopTrim", new Vector3(0f, 3.65f, -11f), new Vector3(21.4f, 0.22f, 0.7f), trim);
+            CreateSceneCube(root.transform, "WestWallTopTrim", new Vector3(-10f, 3.65f, 1f), new Vector3(0.7f, 0.22f, 24.4f), trim);
+            CreateSceneCube(root.transform, "EastWallTopTrim", new Vector3(10f, 3.65f, 1f), new Vector3(0.7f, 0.22f, 24.4f), trim);
 
             CreateSceneCube(root.transform, "Cover_A", new Vector3(-4.5f, 0.55f, -2f), new Vector3(3f, 1.1f, 1.1f), cover);
             CreateSceneCube(root.transform, "Cover_B", new Vector3(4.5f, 0.55f, 4f), new Vector3(3f, 1.1f, 1.1f), cover);
@@ -104,6 +126,17 @@ namespace Practice1.Editor
             light.type = LightType.Directional;
             light.transform.rotation = Quaternion.Euler(55f, -35f, 0f);
             light.intensity = 1.25f;
+
+            Camera sceneCamera = Object.FindFirstObjectByType<Camera>();
+            if (sceneCamera != null)
+            {
+                sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+                sceneCamera.backgroundColor = new Color(0.015f, 0.02f, 0.028f);
+            }
+
+            RenderSettings.skybox = null;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.09f, 0.11f, 0.12f);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
