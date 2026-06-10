@@ -44,8 +44,24 @@ namespace Practice1
         public int BombEventType;
     }
 
+    [System.Serializable]
+    public struct ObjectiveBlockedArea
+    {
+        public Vector2 Center;
+        public Vector2 Size;
+
+        public ObjectiveBlockedArea(Vector2 center, Vector2 size)
+        {
+            Center = center;
+            Size = size;
+        }
+    }
+
     public class GameManager : MonoBehaviour
     {
+        private const int ObjectiveSpawnAttempts = 64;
+        private const int ObjectiveFallbackDirections = 32;
+
         public static GameManager Instance { get; private set; }
 
         [Header("Session")]
@@ -61,6 +77,14 @@ namespace Practice1
         [SerializeField] private Vector3 _randomObjectiveCenter = new Vector3(0f, 0f, 1f);
         [SerializeField] private float _randomObjectiveRadius = 7f;
         [SerializeField] private float _minimumObjectiveDistance = 6f;
+        [SerializeField] private float _objectiveBlockedPadding = 1.2f;
+        [SerializeField] private ObjectiveBlockedArea[] _objectiveBlockedAreas =
+        {
+            new ObjectiveBlockedArea(new Vector2(-4.5f, -2f), new Vector2(3f, 1.1f)),
+            new ObjectiveBlockedArea(new Vector2(4.5f, 4f), new Vector2(3f, 1.1f)),
+            new ObjectiveBlockedArea(new Vector2(-4f, 6.5f), new Vector2(1.2f, 3.2f)),
+            new ObjectiveBlockedArea(new Vector2(4f, -5f), new Vector2(1.2f, 3.2f))
+        };
         [SerializeField] private float _bombFuseDuration = 10f;
         [SerializeField] private float _bombRespawnDelay = 4f;
         [SerializeField] private float _pickupRadius = 2f;
@@ -482,51 +506,98 @@ namespace Practice1
         {
             float radius = Mathf.Max(0.1f, _randomObjectiveRadius);
             float minDistance = Mathf.Clamp(_minimumObjectiveDistance, 0f, radius * 2f);
-            Vector3 bombPosition = ToBombHeight(RandomPointInObjectiveCircle(radius));
-            Vector3 disposalPosition = ToDisposalHeight(RandomPointInObjectiveCircle(radius));
-            float bestDistance = DistanceXZ(bombPosition, disposalPosition);
-
-            for (int i = 0; i < 24 && bestDistance < minDistance; i++)
-            {
-                Vector3 candidate = ToDisposalHeight(RandomPointInObjectiveCircle(radius));
-                float candidateDistance = DistanceXZ(bombPosition, candidate);
-                if (candidateDistance > bestDistance)
-                {
-                    disposalPosition = candidate;
-                    bestDistance = candidateDistance;
-                }
-
-                if (candidateDistance >= minDistance)
-                {
-                    break;
-                }
-            }
-
-            if (bestDistance < minDistance)
-            {
-                Vector2 fromCenter = new Vector2(
-                    bombPosition.x - _randomObjectiveCenter.x,
-                    bombPosition.z - _randomObjectiveCenter.z
-                );
-                Vector2 direction = fromCenter.sqrMagnitude > 0.01f
-                    ? -fromCenter.normalized
-                    : Random.insideUnitCircle.normalized;
-
-                if (direction.sqrMagnitude < 0.01f)
-                {
-                    direction = Vector2.right;
-                }
-
-                Vector2 offset = direction * radius;
-                disposalPosition = ToDisposalHeight(new Vector3(
-                    _randomObjectiveCenter.x + offset.x,
-                    _randomObjectiveCenter.y,
-                    _randomObjectiveCenter.z + offset.y
-                ));
-            }
+            Vector3 bombPosition = ToBombHeight(RandomValidObjectivePoint(radius));
+            Vector3 disposalPosition = ToDisposalHeight(RandomValidDistantObjectivePoint(radius, bombPosition, minDistance));
 
             _bombSpawnPosition = bombPosition;
             _disposalZonePosition = disposalPosition;
+        }
+
+        private Vector3 RandomValidObjectivePoint(float radius)
+        {
+            for (int i = 0; i < ObjectiveSpawnAttempts; i++)
+            {
+                Vector3 candidate = RandomPointInObjectiveCircle(radius);
+                if (!IsObjectivePointBlocked(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return FindBestFallbackObjectivePoint(radius, _randomObjectiveCenter, minDistance: 0f);
+        }
+
+        private Vector3 RandomValidDistantObjectivePoint(float radius, Vector3 otherPoint, float minDistance)
+        {
+            Vector3 bestPoint = otherPoint;
+            float bestDistance = -1f;
+
+            for (int i = 0; i < ObjectiveSpawnAttempts; i++)
+            {
+                Vector3 candidate = RandomPointInObjectiveCircle(radius);
+                if (IsObjectivePointBlocked(candidate))
+                {
+                    continue;
+                }
+
+                float distance = DistanceXZ(otherPoint, candidate);
+                if (distance > bestDistance)
+                {
+                    bestPoint = candidate;
+                    bestDistance = distance;
+                }
+
+                if (distance >= minDistance)
+                {
+                    return candidate;
+                }
+            }
+
+            if (bestDistance >= minDistance)
+            {
+                return bestPoint;
+            }
+
+            return FindBestFallbackObjectivePoint(radius, otherPoint, minDistance);
+        }
+
+        private Vector3 FindBestFallbackObjectivePoint(float radius, Vector3 otherPoint, float minDistance)
+        {
+            Vector3 bestPoint = _randomObjectiveCenter;
+            float bestDistance = -1f;
+
+            for (int ring = 1; ring <= 4; ring++)
+            {
+                float ringRadius = radius * ring / 4f;
+                for (int directionIndex = 0; directionIndex < ObjectiveFallbackDirections; directionIndex++)
+                {
+                    float angle = Mathf.PI * 2f * directionIndex / ObjectiveFallbackDirections;
+                    Vector3 candidate = new Vector3(
+                        _randomObjectiveCenter.x + Mathf.Cos(angle) * ringRadius,
+                        _randomObjectiveCenter.y,
+                        _randomObjectiveCenter.z + Mathf.Sin(angle) * ringRadius
+                    );
+
+                    if (IsObjectivePointBlocked(candidate))
+                    {
+                        continue;
+                    }
+
+                    float distance = DistanceXZ(otherPoint, candidate);
+                    if (distance > bestDistance)
+                    {
+                        bestPoint = candidate;
+                        bestDistance = distance;
+                    }
+
+                    if (distance >= minDistance)
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            return bestDistance >= 0f ? bestPoint : _randomObjectiveCenter;
         }
 
         private Vector3 RandomPointInObjectiveCircle(float radius)
@@ -537,6 +608,29 @@ namespace Practice1
                 _randomObjectiveCenter.y,
                 _randomObjectiveCenter.z + offset.y
             );
+        }
+
+        private bool IsObjectivePointBlocked(Vector3 point)
+        {
+            if (_objectiveBlockedAreas == null)
+            {
+                return false;
+            }
+
+            float padding = Mathf.Max(0f, _objectiveBlockedPadding);
+            for (int i = 0; i < _objectiveBlockedAreas.Length; i++)
+            {
+                ObjectiveBlockedArea area = _objectiveBlockedAreas[i];
+                float halfX = Mathf.Abs(area.Size.x) * 0.5f + padding;
+                float halfZ = Mathf.Abs(area.Size.y) * 0.5f + padding;
+                if (Mathf.Abs(point.x - area.Center.x) <= halfX &&
+                    Mathf.Abs(point.z - area.Center.y) <= halfZ)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static Vector3 ToBombHeight(Vector3 position)
