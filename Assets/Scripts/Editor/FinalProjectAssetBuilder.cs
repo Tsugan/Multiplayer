@@ -12,6 +12,7 @@ namespace Practice1.Editor
         private const string MaterialFolder = Root + "/Materials";
         private const string PrefabFolder = Root + "/Prefabs";
         private const string MainScenePath = "Assets/Scenes/MainScene.unity";
+        private const string PlayerPrefabPath = "Assets/Prefabs/Player.prefab";
 
         [MenuItem("Final Project/Create Basic Models And Materials")]
         public static void CreateAssets()
@@ -26,6 +27,10 @@ namespace Practice1.Editor
             Material hazard = CreateMaterial("M_HazardYellow", new Color(0.95f, 0.72f, 0.1f));
             Material cable = CreateMaterial("M_CableBlack", new Color(0.01f, 0.01f, 0.012f));
             Material disposal = CreateMaterial("M_DisposalCyan", new Color(0.08f, 0.68f, 0.95f));
+            CreateMaterial("M_PlayerSuit", new Color(0.08f, 0.23f, 0.18f));
+            CreateMaterial("M_PlayerArmor", new Color(0.04f, 0.05f, 0.055f));
+            CreateMaterial("M_PlayerVisor", new Color(0.12f, 0.65f, 0.9f));
+            CreateMaterial("M_PlayerAccent", new Color(0.92f, 0.68f, 0.12f));
 
             SaveBombPrefab(bomb, metal, hazard, cable);
             SaveDisposalStationPrefab(disposal, metal, hazard);
@@ -105,6 +110,62 @@ namespace Practice1.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("[FinalProject] Editable scene objects were baked into MainScene.");
+        }
+
+        [MenuItem("Final Project/Bake Sapper Player Model Into Player Prefab")]
+        public static void BakeSapperPlayerModelIntoPlayerPrefab()
+        {
+            CreateAssets();
+
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
+            if (prefabRoot == null)
+            {
+                throw new FileNotFoundException($"Player prefab not found: {PlayerPrefabPath}");
+            }
+
+            Transform previous = prefabRoot.transform.Find("SapperPlayerModel");
+            if (previous != null)
+            {
+                Object.DestroyImmediate(previous.gameObject);
+            }
+
+            Material suit = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_PlayerSuit.mat");
+            Material armor = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_PlayerArmor.mat");
+            Material visor = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_PlayerVisor.mat");
+            Material accent = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_PlayerAccent.mat");
+            Material cable = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialFolder}/M_CableBlack.mat");
+
+            MeshRenderer rootRenderer = prefabRoot.GetComponent<MeshRenderer>();
+            if (rootRenderer != null)
+            {
+                rootRenderer.sharedMaterial = suit;
+            }
+
+            GameObject modelRoot = new GameObject("SapperPlayerModel");
+            modelRoot.transform.SetParent(prefabRoot.transform, false);
+            modelRoot.transform.localPosition = Vector3.zero;
+            modelRoot.transform.localRotation = Quaternion.identity;
+            modelRoot.transform.localScale = Vector3.one;
+
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Sphere, "Helmet", new Vector3(0f, 1.22f, 0f), new Vector3(0.58f, 0.42f, 0.58f), armor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "Visor", new Vector3(0f, 1.23f, 0.31f), new Vector3(0.42f, 0.18f, 0.08f), visor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "ChestArmor", new Vector3(0f, 0.52f, 0.23f), new Vector3(0.78f, 0.72f, 0.16f), armor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "BombSquadPatch", new Vector3(0f, 0.68f, 0.33f), new Vector3(0.34f, 0.13f, 0.04f), accent);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "Backpack", new Vector3(0f, 0.48f, -0.38f), new Vector3(0.74f, 0.82f, 0.28f), armor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "LeftShoulderPad", new Vector3(-0.47f, 0.78f, 0f), new Vector3(0.22f, 0.24f, 0.38f), armor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "RightShoulderPad", new Vector3(0.47f, 0.78f, 0f), new Vector3(0.22f, 0.24f, 0.38f), armor);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "LeftGlove", new Vector3(-0.54f, 0.12f, 0.05f), new Vector3(0.16f, 0.20f, 0.16f), cable);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "RightGlove", new Vector3(0.54f, 0.12f, 0.05f), new Vector3(0.16f, 0.20f, 0.16f), cable);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "LeftBoot", new Vector3(-0.22f, -0.92f, 0.08f), new Vector3(0.24f, 0.18f, 0.32f), cable);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cube, "RightBoot", new Vector3(0.22f, -0.92f, 0.08f), new Vector3(0.24f, 0.18f, 0.32f), cable);
+            CreatePrimitive(modelRoot.transform, PrimitiveType.Cylinder, "DefuseTool", new Vector3(0.46f, 0.2f, -0.36f), new Vector3(0.05f, 0.42f, 0.05f), accent);
+
+            StripColliders(modelRoot);
+            PrefabUtility.SaveAsPrefabAsset(prefabRoot, PlayerPrefabPath);
+            PrefabUtility.UnloadPrefabContents(prefabRoot);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[FinalProject] Sapper player model was baked into Player.prefab.");
         }
 
         private static void SaveBombPrefab(Material bomb, Material metal, Material hazard, Material cable)
@@ -213,6 +274,15 @@ namespace Practice1.Editor
             if (collider != null)
             {
                 Object.DestroyImmediate(collider);
+            }
+        }
+
+        private static void StripColliders(GameObject root)
+        {
+            Collider[] colliders = root.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Object.DestroyImmediate(colliders[i]);
             }
         }
 
