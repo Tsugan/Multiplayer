@@ -21,10 +21,19 @@ namespace Practice1
         [SerializeField] private float _respawnDelay = 3f;
         [SerializeField] private Transform[] _spawnPoints;
         [SerializeField] private string _spawnPointTag = "PlayerSpawn";
+        [SerializeField] private float _spawnBlockerPadding = 0.75f;
+        [SerializeField] private string[] _spawnBlockedColliderNames =
+        {
+            "Cover_A",
+            "Cover_B",
+            "Cover_C",
+            "Cover_D"
+        };
 
         private CharacterController _characterController;
         private Renderer[] _renderers;
         private Collider[] _colliders;
+        private Collider[] _spawnBlockedColliders = new Collider[0];
         private Coroutine _respawnRoutine;
         private bool _isRespawning;
 
@@ -124,22 +133,8 @@ namespace Practice1
 
         private void MoveToSpawnPoint(int spawnSlot)
         {
-            Vector3 spawnPosition;
             Transform[] sceneSpawnPoints = GetSceneSpawnPoints();
-            if (sceneSpawnPoints != null && sceneSpawnPoints.Length > 0)
-            {
-                int idx = spawnSlot >= 0
-                    ? spawnSlot % sceneSpawnPoints.Length
-                    : Random.Range(0, sceneSpawnPoints.Length);
-                spawnPosition = sceneSpawnPoints[idx] != null ? sceneSpawnPoints[idx].position : transform.position;
-            }
-            else
-            {
-                int slot = spawnSlot >= 0 ? spawnSlot : OwnerId < 0 ? 0 : OwnerId % 8;
-                spawnPosition = new Vector3(-7f + slot * 2f, 1f, 0f);
-            }
-
-            spawnPosition = GetSafeSpawnPosition(spawnPosition);
+            Vector3 spawnPosition = ResolveSpawnPosition(sceneSpawnPoints, spawnSlot);
 
             if (_characterController != null)
             {
@@ -154,6 +149,73 @@ namespace Practice1
             }
         }
 
+        private Vector3 ResolveSpawnPosition(Transform[] sceneSpawnPoints, int spawnSlot)
+        {
+            if (sceneSpawnPoints != null && sceneSpawnPoints.Length > 0)
+            {
+                int startIndex = spawnSlot >= 0
+                    ? spawnSlot % sceneSpawnPoints.Length
+                    : Random.Range(0, sceneSpawnPoints.Length);
+
+                for (int offset = 0; offset < sceneSpawnPoints.Length; offset++)
+                {
+                    int index = (startIndex + offset) % sceneSpawnPoints.Length;
+                    Transform spawnPoint = sceneSpawnPoints[index];
+                    if (spawnPoint == null)
+                    {
+                        continue;
+                    }
+
+                    Vector3 candidate = GetSafeSpawnPosition(spawnPoint.position);
+                    if (!IsSpawnPointBlocked(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            Vector3 fallback = GetFallbackSpawnPosition(spawnSlot);
+            if (!IsSpawnPointBlocked(fallback))
+            {
+                return fallback;
+            }
+
+            return FindOpenFallbackSpawnPosition(fallback);
+        }
+
+        private Vector3 GetFallbackSpawnPosition(int spawnSlot)
+        {
+            int slot = spawnSlot >= 0 ? spawnSlot : OwnerId < 0 ? 0 : OwnerId % 8;
+            return GetSafeSpawnPosition(new Vector3(-7f + slot * 2f, 1f, 0f));
+        }
+
+        private Vector3 FindOpenFallbackSpawnPosition(Vector3 fallback)
+        {
+            const int directions = 16;
+            const int rings = 5;
+
+            for (int ring = 1; ring <= rings; ring++)
+            {
+                float radius = ring * 1.5f;
+                for (int i = 0; i < directions; i++)
+                {
+                    float angle = Mathf.PI * 2f * i / directions;
+                    Vector3 candidate = new Vector3(
+                        fallback.x + Mathf.Cos(angle) * radius,
+                        fallback.y,
+                        fallback.z + Mathf.Sin(angle) * radius
+                    );
+
+                    if (!IsSpawnPointBlocked(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            return fallback;
+        }
+
         private Vector3 GetSafeSpawnPosition(Vector3 spawnPosition)
         {
             if (_characterController == null)
@@ -164,6 +226,91 @@ namespace Practice1
             float controllerBottomOffset = _characterController.height * 0.5f - _characterController.center.y;
             spawnPosition.y = Mathf.Max(spawnPosition.y, controllerBottomOffset + 0.05f);
             return spawnPosition;
+        }
+
+        private void RefreshSpawnBlockedColliders()
+        {
+            if (_spawnBlockedColliderNames == null || _spawnBlockedColliderNames.Length == 0)
+            {
+                _spawnBlockedColliders = new Collider[0];
+                return;
+            }
+
+            List<Collider> colliders = new List<Collider>();
+            for (int i = 0; i < _spawnBlockedColliderNames.Length; i++)
+            {
+                string objectName = _spawnBlockedColliderNames[i];
+                if (string.IsNullOrWhiteSpace(objectName))
+                {
+                    continue;
+                }
+
+                GameObject blockedObject = GameObject.Find(objectName);
+                if (blockedObject == null)
+                {
+                    continue;
+                }
+
+                blockedObject.GetComponentsInChildren(includeInactive: true, colliders);
+            }
+
+            _spawnBlockedColliders = colliders.ToArray();
+        }
+
+        private bool IsSpawnPointBlocked(Vector3 point)
+        {
+            if (_spawnBlockedColliders == null || _spawnBlockedColliders.Length == 0)
+            {
+                RefreshSpawnBlockedColliders();
+            }
+
+            float padding = Mathf.Max(0f, _spawnBlockerPadding);
+            bool shouldRefresh = false;
+            for (int i = 0; i < _spawnBlockedColliders.Length; i++)
+            {
+                Collider blockedCollider = _spawnBlockedColliders[i];
+                if (blockedCollider == null)
+                {
+                    shouldRefresh = true;
+                    continue;
+                }
+
+                if (!blockedCollider.enabled || !blockedCollider.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (IsPointInsideColliderFootprint(blockedCollider, point, padding))
+                {
+                    return true;
+                }
+            }
+
+            if (shouldRefresh)
+            {
+                RefreshSpawnBlockedColliders();
+            }
+
+            return false;
+        }
+
+        private static bool IsPointInsideColliderFootprint(Collider blockedCollider, Vector3 point, float padding)
+        {
+            if (blockedCollider is BoxCollider boxCollider)
+            {
+                Vector3 localPoint = boxCollider.transform.InverseTransformPoint(point) - boxCollider.center;
+                Vector3 scale = boxCollider.transform.lossyScale;
+                float localPaddingX = padding / Mathf.Max(Mathf.Abs(scale.x), 0.001f);
+                float localPaddingZ = padding / Mathf.Max(Mathf.Abs(scale.z), 0.001f);
+                return Mathf.Abs(localPoint.x) <= boxCollider.size.x * 0.5f + localPaddingX &&
+                       Mathf.Abs(localPoint.z) <= boxCollider.size.z * 0.5f + localPaddingZ;
+            }
+
+            Bounds bounds = blockedCollider.bounds;
+            return point.x >= bounds.min.x - padding &&
+                   point.x <= bounds.max.x + padding &&
+                   point.z >= bounds.min.z - padding &&
+                   point.z <= bounds.max.z + padding;
         }
 
         private Transform[] GetSceneSpawnPoints()
