@@ -465,11 +465,13 @@ namespace Practice1
 
         private void ResetPlayersForRound(bool resetScore)
         {
+            int spawnSlot = 0;
             foreach (PlayerNetwork player in PlayerNetwork.ActivePlayers)
             {
                 if (player != null && player.IsSpawned && player.IsServerInitialized)
                 {
-                    player.ResetForMatchOnServer(resetScore);
+                    player.ResetForMatchOnServer(resetScore, spawnSlot);
+                    spawnSlot++;
                 }
             }
         }

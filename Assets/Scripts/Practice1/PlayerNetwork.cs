@@ -119,18 +119,27 @@ namespace Practice1
 
         private void MoveToSpawnPoint()
         {
+            MoveToSpawnPoint(spawnSlot: -1);
+        }
+
+        private void MoveToSpawnPoint(int spawnSlot)
+        {
             Vector3 spawnPosition;
             Transform[] sceneSpawnPoints = GetSceneSpawnPoints();
             if (sceneSpawnPoints != null && sceneSpawnPoints.Length > 0)
             {
-                int idx = Random.Range(0, sceneSpawnPoints.Length);
+                int idx = spawnSlot >= 0
+                    ? spawnSlot % sceneSpawnPoints.Length
+                    : Random.Range(0, sceneSpawnPoints.Length);
                 spawnPosition = sceneSpawnPoints[idx] != null ? sceneSpawnPoints[idx].position : transform.position;
             }
             else
             {
-                int slot = OwnerId < 0 ? 0 : OwnerId % 8;
+                int slot = spawnSlot >= 0 ? spawnSlot : OwnerId < 0 ? 0 : OwnerId % 8;
                 spawnPosition = new Vector3(-7f + slot * 2f, 1f, 0f);
             }
+
+            spawnPosition = GetSafeSpawnPosition(spawnPosition);
 
             if (_characterController != null)
             {
@@ -143,6 +152,18 @@ namespace Practice1
             {
                 _characterController.enabled = true;
             }
+        }
+
+        private Vector3 GetSafeSpawnPosition(Vector3 spawnPosition)
+        {
+            if (_characterController == null)
+            {
+                return spawnPosition;
+            }
+
+            float controllerBottomOffset = _characterController.height * 0.5f - _characterController.center.y;
+            spawnPosition.y = Mathf.Max(spawnPosition.y, controllerBottomOffset + 0.05f);
+            return spawnPosition;
         }
 
         private Transform[] GetSceneSpawnPoints()
@@ -163,6 +184,7 @@ namespace Practice1
                         result[i] = tagged[i].transform;
                     }
 
+                    SortSpawnPoints(result);
                     return result;
                 }
             }
@@ -178,7 +200,24 @@ namespace Practice1
                 }
             }
 
-            return named.ToArray();
+            Transform[] namedResult = named.ToArray();
+            SortSpawnPoints(namedResult);
+            return namedResult;
+        }
+
+        private static void SortSpawnPoints(Transform[] spawnPoints)
+        {
+            if (spawnPoints == null)
+            {
+                return;
+            }
+
+            System.Array.Sort(spawnPoints, (a, b) =>
+            {
+                string first = a != null ? a.name : string.Empty;
+                string second = b != null ? b.name : string.Empty;
+                return string.CompareOrdinal(first, second);
+            });
         }
 
         private void ApplyAliveVisualState(bool alive)
@@ -234,6 +273,11 @@ namespace Practice1
 
         public void ResetForMatchOnServer(bool resetScore)
         {
+            ResetForMatchOnServer(resetScore, spawnSlot: -1);
+        }
+
+        public void ResetForMatchOnServer(bool resetScore, int spawnSlot)
+        {
             if (!base.IsServerInitialized)
             {
                 return;
@@ -246,7 +290,7 @@ namespace Practice1
             }
 
             _isRespawning = false;
-            MoveToSpawnPoint();
+            MoveToSpawnPoint(spawnSlot);
             HP.Value = _maxHp;
             IsAlive.Value = true;
 
