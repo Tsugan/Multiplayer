@@ -66,6 +66,8 @@ namespace Practice1
         [SerializeField] private float _randomObjectiveRadius = 7f;
         [SerializeField] private float _minimumObjectiveDistance = 6f;
         [SerializeField] private float _objectiveColliderPadding;
+        [SerializeField] private float _bombObjectiveClearance = 1.2f;
+        [SerializeField] private float _disposalObjectiveClearance = 2.2f;
         [SerializeField] private string[] _objectiveBlockedColliderNames =
         {
             "Cover_A",
@@ -497,28 +499,39 @@ namespace Practice1
         {
             float radius = Mathf.Max(0.1f, _randomObjectiveRadius);
             float minDistance = Mathf.Clamp(_minimumObjectiveDistance, 0f, radius * 2f);
-            Vector3 bombPosition = ToBombHeight(RandomValidObjectivePoint(radius));
-            Vector3 disposalPosition = ToDisposalHeight(RandomValidDistantObjectivePoint(radius, bombPosition, minDistance));
+            float bombClearance = Mathf.Max(1.2f, _bombObjectiveClearance);
+            float disposalClearance = Mathf.Max(2.2f, _disposalObjectiveClearance);
+            Vector3 bombPosition = ToBombHeight(RandomValidObjectivePoint(radius, bombClearance));
+            Vector3 disposalPosition = ToDisposalHeight(RandomValidDistantObjectivePoint(
+                radius,
+                bombPosition,
+                minDistance,
+                disposalClearance
+            ));
 
             _bombSpawnPosition = bombPosition;
             _disposalZonePosition = disposalPosition;
         }
 
-        private Vector3 RandomValidObjectivePoint(float radius)
+        private Vector3 RandomValidObjectivePoint(float radius, float clearance)
         {
             for (int i = 0; i < ObjectiveSpawnAttempts; i++)
             {
                 Vector3 candidate = RandomPointInObjectiveCircle(radius);
-                if (!IsObjectivePointBlocked(candidate))
+                if (!IsObjectivePointBlocked(candidate, clearance))
                 {
                     return candidate;
                 }
             }
 
-            return FindBestFallbackObjectivePoint(radius, _randomObjectiveCenter, minDistance: 0f);
+            return FindBestFallbackObjectivePoint(radius, _randomObjectiveCenter, minDistance: 0f, clearance);
         }
 
-        private Vector3 RandomValidDistantObjectivePoint(float radius, Vector3 otherPoint, float minDistance)
+        private Vector3 RandomValidDistantObjectivePoint(
+            float radius,
+            Vector3 otherPoint,
+            float minDistance,
+            float clearance)
         {
             Vector3 bestPoint = otherPoint;
             float bestDistance = -1f;
@@ -526,7 +539,7 @@ namespace Practice1
             for (int i = 0; i < ObjectiveSpawnAttempts; i++)
             {
                 Vector3 candidate = RandomPointInObjectiveCircle(radius);
-                if (IsObjectivePointBlocked(candidate))
+                if (IsObjectivePointBlocked(candidate, clearance))
                 {
                     continue;
                 }
@@ -549,10 +562,14 @@ namespace Practice1
                 return bestPoint;
             }
 
-            return FindBestFallbackObjectivePoint(radius, otherPoint, minDistance);
+            return FindBestFallbackObjectivePoint(radius, otherPoint, minDistance, clearance);
         }
 
-        private Vector3 FindBestFallbackObjectivePoint(float radius, Vector3 otherPoint, float minDistance)
+        private Vector3 FindBestFallbackObjectivePoint(
+            float radius,
+            Vector3 otherPoint,
+            float minDistance,
+            float clearance)
         {
             Vector3 bestPoint = _randomObjectiveCenter;
             float bestDistance = -1f;
@@ -569,7 +586,7 @@ namespace Practice1
                         _randomObjectiveCenter.z + Mathf.Sin(angle) * ringRadius
                     );
 
-                    if (IsObjectivePointBlocked(candidate))
+                    if (IsObjectivePointBlocked(candidate, clearance))
                     {
                         continue;
                     }
@@ -603,13 +620,32 @@ namespace Practice1
 
         private void RefreshObjectiveBlockedColliders()
         {
-            if (_objectiveBlockedColliderNames == null || _objectiveBlockedColliderNames.Length == 0)
+            List<Collider> colliders = new List<Collider>();
+            AddNamedObjectiveBlockerColliders(colliders);
+
+            if (colliders.Count == 0)
             {
-                _objectiveBlockedColliders = new Collider[0];
+                Collider[] sceneColliders = FindObjectsByType<Collider>(FindObjectsSortMode.None);
+                for (int i = 0; i < sceneColliders.Length; i++)
+                {
+                    Collider sceneCollider = sceneColliders[i];
+                    if (sceneCollider != null && IsObjectiveBlockerCollider(sceneCollider))
+                    {
+                        colliders.Add(sceneCollider);
+                    }
+                }
+            }
+
+            _objectiveBlockedColliders = colliders.ToArray();
+        }
+
+        private void AddNamedObjectiveBlockerColliders(List<Collider> colliders)
+        {
+            if (_objectiveBlockedColliderNames == null)
+            {
                 return;
             }
 
-            List<Collider> colliders = new List<Collider>();
             for (int i = 0; i < _objectiveBlockedColliderNames.Length; i++)
             {
                 string objectName = _objectiveBlockedColliderNames[i];
@@ -626,18 +662,16 @@ namespace Practice1
 
                 blockedObject.GetComponentsInChildren(includeInactive: true, colliders);
             }
-
-            _objectiveBlockedColliders = colliders.ToArray();
         }
 
-        private bool IsObjectivePointBlocked(Vector3 point)
+        private bool IsObjectivePointBlocked(Vector3 point, float clearance)
         {
             if (_objectiveBlockedColliders == null || _objectiveBlockedColliders.Length == 0)
             {
                 RefreshObjectiveBlockedColliders();
             }
 
-            float padding = Mathf.Max(0f, _objectiveColliderPadding);
+            float padding = Mathf.Max(0f, _objectiveColliderPadding) + Mathf.Max(0f, clearance);
             bool shouldRefresh = false;
             for (int i = 0; i < _objectiveBlockedColliders.Length; i++)
             {
@@ -659,12 +693,74 @@ namespace Practice1
                 }
             }
 
+            if (IsObjectivePointBlockedByPhysics(point, padding))
+            {
+                return true;
+            }
+
             if (shouldRefresh)
             {
                 RefreshObjectiveBlockedColliders();
             }
 
             return false;
+        }
+
+        private bool IsObjectivePointBlockedByPhysics(Vector3 point, float radius)
+        {
+            if (radius <= 0f)
+            {
+                return false;
+            }
+
+            Collider[] overlaps = Physics.OverlapSphere(point + Vector3.up * 0.55f, radius, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < overlaps.Length; i++)
+            {
+                Collider overlap = overlaps[i];
+                if (overlap != null && IsObjectiveBlockerCollider(overlap))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsObjectiveBlockerCollider(Collider candidate)
+        {
+            Transform current = candidate.transform;
+            while (current != null)
+            {
+                if (IsObjectiveBlockerName(current.name))
+                {
+                    return true;
+                }
+
+                current = current.parent;
+            }
+
+            return false;
+        }
+
+        private bool IsObjectiveBlockerName(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                return false;
+            }
+
+            if (_objectiveBlockedColliderNames != null)
+            {
+                for (int i = 0; i < _objectiveBlockedColliderNames.Length; i++)
+                {
+                    if (objectName == _objectiveBlockedColliderNames[i])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return objectName.StartsWith("Cover_");
         }
 
         private static bool IsPointInsideColliderFootprint(Collider blockedCollider, Vector3 point, float padding)
