@@ -19,7 +19,10 @@ namespace Practice1
         private GameObject _disposalStationPrefab;
         private GameObject _arenaRoot;
         private GameObject _bombVisual;
+        private GameObject _bombSpawnMarkVisual;
+        private GameObject _bombSpawnBeaconVisual;
         private GameObject _disposalZoneVisual;
+        private GameObject _disposalStationVisual;
         private Light _bombLight;
         private TextMeshProUGUI _fpsText;
         private int _lastBombEventId;
@@ -98,7 +101,10 @@ namespace Practice1
             {
                 _arenaRoot = sceneRoot;
                 _bombVisual = FindChildGameObject(_arenaRoot.transform, "BombVisual");
+                _bombSpawnMarkVisual = FindChildGameObject(_arenaRoot.transform, "BombSpawnMark");
+                _bombSpawnBeaconVisual = FindChildGameObject(_arenaRoot.transform, "BombSpawnBeacon");
                 _disposalZoneVisual = FindChildGameObject(_arenaRoot.transform, "DisposalZoneVisual");
+                _disposalStationVisual = FindChildGameObject(_arenaRoot.transform, "DisposalStationModel");
                 _bombLight = _bombVisual != null
                     ? _bombVisual.GetComponentInChildren<Light>(includeInactive: true)
                     : null;
@@ -126,8 +132,8 @@ namespace Practice1
             CreateCube("Cover_C", new Vector3(-4f, 0.55f, 6.5f), new Vector3(1.2f, 1.1f, 3.2f), cover);
             CreateCube("Cover_D", new Vector3(4f, 0.55f, -5f), new Vector3(1.2f, 1.1f, 3.2f), cover);
 
-            CreateCube("BombSpawnMark", new Vector3(0f, 0.02f, 0f), new Vector3(2.2f, 0.05f, 2.2f), hazard);
-            CreateCube("BombSpawnBeacon", new Vector3(0f, 0.7f, 0f), new Vector3(0.18f, 1.2f, 0.18f), hazard);
+            _bombSpawnMarkVisual = CreateCube("BombSpawnMark", new Vector3(0f, 0.02f, 0f), new Vector3(2.2f, 0.05f, 2.2f), hazard);
+            _bombSpawnBeaconVisual = CreateCube("BombSpawnBeacon", new Vector3(0f, 0.7f, 0f), new Vector3(0.18f, 1.2f, 0.18f), hazard);
 
             _disposalZoneVisual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             _disposalZoneVisual.name = "DisposalZoneVisual";
@@ -195,12 +201,14 @@ namespace Practice1
                 GameObject stationPrefab = Instantiate(_disposalStationPrefab, _arenaRoot.transform);
                 stationPrefab.name = "DisposalStationModel";
                 stationPrefab.transform.position = new Vector3(0f, 0.08f, 8f);
+                _disposalStationVisual = stationPrefab;
                 return;
             }
 
             GameObject station = new GameObject("DisposalStationModel");
             station.transform.SetParent(_arenaRoot.transform);
             station.transform.position = new Vector3(0f, 0.08f, 8f);
+            _disposalStationVisual = station;
 
             GameObject console = CreatePrimitiveChild(station.transform, PrimitiveType.Cube, "Console", new Vector3(0f, 0.45f, 0f), new Vector3(1.8f, 0.8f, 0.9f), metal);
             Destroy(console.GetComponent<Collider>());
@@ -338,12 +346,26 @@ namespace Practice1
 
         private void UpdateBombVisual(GameManager manager)
         {
-            if (_bombVisual == null || _disposalZoneVisual == null)
+            if (_disposalZoneVisual != null)
+            {
+                _disposalZoneVisual.transform.position = manager.DisposalZonePosition;
+            }
+
+            if (_disposalStationVisual != null)
+            {
+                _disposalStationVisual.transform.position = manager.DisposalZonePosition + Vector3.up * 0.03f;
+            }
+
+            bool markerVisible = manager.CurrentBombPhase == BombPhase.Waiting ||
+                                 manager.CurrentBombPhase == BombPhase.Dropped;
+            UpdateBombSpawnMarker(_bombSpawnMarkVisual, manager.BombPosition, 0.02f, markerVisible);
+            UpdateBombSpawnMarker(_bombSpawnBeaconVisual, manager.BombPosition, 0.7f, markerVisible);
+
+            if (_bombVisual == null)
             {
                 return;
             }
 
-            _disposalZoneVisual.transform.position = manager.DisposalZonePosition;
             bool visible = manager.CurrentBombPhase != BombPhase.Respawning;
             _bombVisual.SetActive(visible);
             if (!visible)
@@ -358,6 +380,17 @@ namespace Practice1
             {
                 _bombLight.intensity = 1.6f + Mathf.PingPong(Time.time * 5f, 1.4f);
             }
+        }
+
+        private static void UpdateBombSpawnMarker(GameObject marker, Vector3 bombPosition, float y, bool visible)
+        {
+            if (marker == null)
+            {
+                return;
+            }
+
+            marker.SetActive(visible);
+            marker.transform.position = new Vector3(bombPosition.x, y, bombPosition.z);
         }
 
         private void SpawnExplosionEffect(Vector3 position)

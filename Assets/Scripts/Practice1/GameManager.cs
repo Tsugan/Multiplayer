@@ -58,6 +58,9 @@ namespace Practice1
         [Header("Bomb Disposal")]
         [SerializeField] private Vector3 _bombSpawnPosition = new Vector3(0f, 1f, 0f);
         [SerializeField] private Vector3 _disposalZonePosition = new Vector3(0f, 0.05f, 8f);
+        [SerializeField] private Vector3 _randomObjectiveCenter = new Vector3(0f, 0f, 1f);
+        [SerializeField] private float _randomObjectiveRadius = 7f;
+        [SerializeField] private float _minimumObjectiveDistance = 6f;
         [SerializeField] private float _bombFuseDuration = 10f;
         [SerializeField] private float _bombRespawnDelay = 4f;
         [SerializeField] private float _pickupRadius = 2f;
@@ -353,7 +356,7 @@ namespace Practice1
                     BombRespawnLeft = Mathf.Max(0f, BombRespawnLeft - Time.deltaTime);
                     if (BombRespawnLeft <= 0f)
                     {
-                        ResetBombToWaiting("Bomb respawned. Pick it up and dispose it.");
+                        ResetBombToWaiting("Bomb respawned. Pick it up and dispose it.", randomizeObjectivePositions: true);
                         RegisterBombEvent(5);
                     }
                     break;
@@ -414,7 +417,7 @@ namespace Practice1
             ResetPlayersForRound(resetScore: true);
             MatchTimeLeft = _matchDuration;
             ResultsText = string.Empty;
-            ResetBombToWaiting("Pick up the bomb and bring it to the disposal zone.");
+            ResetBombToWaiting("Pick up the bomb and bring it to the disposal zone.", randomizeObjectivePositions: true);
             CurrentState = GameState.InProgress;
             Debug.Log("[Server] Bomb Disposal match started.");
             BroadcastState();
@@ -458,16 +461,101 @@ namespace Practice1
             }
         }
 
-        private void ResetBombToWaiting(string objectiveText)
+        private void ResetBombToWaiting(string objectiveText, bool randomizeObjectivePositions = false)
         {
             CurrentBombPhase = BombPhase.Waiting;
             _bombCarrierOwnerId = -1;
             BombCarrierName = string.Empty;
+            if (randomizeObjectivePositions)
+            {
+                RandomizeObjectivePositions();
+            }
+
             BombPosition = _bombSpawnPosition;
             BombFuseLeft = 0f;
             BombRespawnLeft = 0f;
             _carryScoreTimer = 0f;
             ObjectiveText = objectiveText;
+        }
+
+        private void RandomizeObjectivePositions()
+        {
+            float radius = Mathf.Max(0.1f, _randomObjectiveRadius);
+            float minDistance = Mathf.Clamp(_minimumObjectiveDistance, 0f, radius * 2f);
+            Vector3 bombPosition = ToBombHeight(RandomPointInObjectiveCircle(radius));
+            Vector3 disposalPosition = ToDisposalHeight(RandomPointInObjectiveCircle(radius));
+            float bestDistance = DistanceXZ(bombPosition, disposalPosition);
+
+            for (int i = 0; i < 24 && bestDistance < minDistance; i++)
+            {
+                Vector3 candidate = ToDisposalHeight(RandomPointInObjectiveCircle(radius));
+                float candidateDistance = DistanceXZ(bombPosition, candidate);
+                if (candidateDistance > bestDistance)
+                {
+                    disposalPosition = candidate;
+                    bestDistance = candidateDistance;
+                }
+
+                if (candidateDistance >= minDistance)
+                {
+                    break;
+                }
+            }
+
+            if (bestDistance < minDistance)
+            {
+                Vector2 fromCenter = new Vector2(
+                    bombPosition.x - _randomObjectiveCenter.x,
+                    bombPosition.z - _randomObjectiveCenter.z
+                );
+                Vector2 direction = fromCenter.sqrMagnitude > 0.01f
+                    ? -fromCenter.normalized
+                    : Random.insideUnitCircle.normalized;
+
+                if (direction.sqrMagnitude < 0.01f)
+                {
+                    direction = Vector2.right;
+                }
+
+                Vector2 offset = direction * radius;
+                disposalPosition = ToDisposalHeight(new Vector3(
+                    _randomObjectiveCenter.x + offset.x,
+                    _randomObjectiveCenter.y,
+                    _randomObjectiveCenter.z + offset.y
+                ));
+            }
+
+            _bombSpawnPosition = bombPosition;
+            _disposalZonePosition = disposalPosition;
+        }
+
+        private Vector3 RandomPointInObjectiveCircle(float radius)
+        {
+            Vector2 offset = Random.insideUnitCircle * radius;
+            return new Vector3(
+                _randomObjectiveCenter.x + offset.x,
+                _randomObjectiveCenter.y,
+                _randomObjectiveCenter.z + offset.y
+            );
+        }
+
+        private static Vector3 ToBombHeight(Vector3 position)
+        {
+            position.y = 1f;
+            return position;
+        }
+
+        private static Vector3 ToDisposalHeight(Vector3 position)
+        {
+            position.y = 0.05f;
+            return position;
+        }
+
+        private static float DistanceXZ(Vector3 first, Vector3 second)
+        {
+            float dx = first.x - second.x;
+            float dz = first.z - second.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
         }
 
         private void StartBombRespawn(string objectiveText, int eventType)
