@@ -13,6 +13,8 @@ namespace Practice1
         private static AudioClip _disposeClip;
         private static AudioClip _explodeClip;
 
+        private GameObject _bombPrefab;
+        private GameObject _disposalStationPrefab;
         private GameObject _arenaRoot;
         private GameObject _bombVisual;
         private GameObject _disposalZoneVisual;
@@ -37,6 +39,7 @@ namespace Practice1
 
         private void Awake()
         {
+            LoadProjectAssets();
             EnsureAudio();
             CreateArenaPresentation();
             if (!Application.isBatchMode)
@@ -73,6 +76,12 @@ namespace Practice1
         public static void PlayShotSound(Vector3 position)
         {
             PlayClip(_shotClip, position, 0.28f);
+        }
+
+        private void LoadProjectAssets()
+        {
+            _bombPrefab = Resources.Load<GameObject>("FinalProject/Prefabs/BombModel");
+            _disposalStationPrefab = Resources.Load<GameObject>("FinalProject/Prefabs/DisposalStation");
         }
 
         private void CreateArenaPresentation()
@@ -126,6 +135,22 @@ namespace Practice1
 
         private void CreateBombModel(Material bomb, Material metal, Material cable, Material hazard)
         {
+            if (_bombPrefab != null)
+            {
+                _bombVisual = Instantiate(_bombPrefab, _arenaRoot.transform);
+                _bombVisual.name = "BombVisual";
+                _bombLight = _bombVisual.GetComponentInChildren<Light>(includeInactive: true);
+                if (_bombLight == null)
+                {
+                    _bombLight = _bombVisual.AddComponent<Light>();
+                    _bombLight.type = LightType.Point;
+                    _bombLight.range = 6f;
+                    _bombLight.color = new Color(1f, 0.25f, 0.1f);
+                }
+
+                return;
+            }
+
             _bombVisual = new GameObject("BombVisual");
             _bombVisual.transform.SetParent(_arenaRoot.transform);
 
@@ -151,6 +176,14 @@ namespace Practice1
 
         private void CreateDisposalStation(Material disposal, Material metal)
         {
+            if (_disposalStationPrefab != null)
+            {
+                GameObject stationPrefab = Instantiate(_disposalStationPrefab, _arenaRoot.transform);
+                stationPrefab.name = "DisposalStationModel";
+                stationPrefab.transform.position = new Vector3(0f, 0.08f, 8f);
+                return;
+            }
+
             GameObject station = new GameObject("DisposalStationModel");
             station.transform.SetParent(_arenaRoot.transform);
             station.transform.position = new Vector3(0f, 0.08f, 8f);
@@ -213,8 +246,9 @@ namespace Practice1
 
         private static Material CreateMaterial(string name, Color color)
         {
-            Shader shader = Shader.Find("Standard") ??
-                            Shader.Find("Universal Render Pipeline/Lit") ??
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ??
+                            Shader.Find("Universal Render Pipeline/Simple Lit") ??
+                            Shader.Find("Standard") ??
                             Shader.Find("Sprites/Default");
             Material material = new Material(shader);
             material.name = name;
@@ -224,7 +258,8 @@ namespace Practice1
 
         private static Material CreateParticleMaterial(string name, Color color)
         {
-            Shader shader = Shader.Find("Particles/Standard Unlit") ??
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+                            Shader.Find("Particles/Standard Unlit") ??
                             Shader.Find("Sprites/Default") ??
                             Shader.Find("Standard");
             Material material = new Material(shader);
@@ -443,11 +478,16 @@ namespace Practice1
             _audioSource.spatialBlend = 0.35f;
             _audioSource.volume = 0.65f;
 
-            _shotClip = CreateTone("Shot", 820f, 0.07f, 0.18f);
-            _pickupClip = CreateTone("Pickup", 520f, 0.12f, 0.22f);
-            _throwClip = CreateTone("Throw", 300f, 0.10f, 0.18f);
-            _disposeClip = CreateTone("Dispose", 660f, 0.22f, 0.25f);
-            _explodeClip = CreateExplosionClip("Explosion", 0.7f, 0.45f);
+            _shotClip = Resources.Load<AudioClip>("FinalProject/Sounds/shot") ??
+                        CreateTone("Shot", 820f, 0.07f, 0.18f);
+            _pickupClip = Resources.Load<AudioClip>("FinalProject/Sounds/pickup") ??
+                          CreateTone("Pickup", 520f, 0.12f, 0.22f);
+            _throwClip = Resources.Load<AudioClip>("FinalProject/Sounds/throw") ??
+                         CreateTone("Throw", 300f, 0.10f, 0.18f);
+            _disposeClip = Resources.Load<AudioClip>("FinalProject/Sounds/dispose") ??
+                           CreateTone("Dispose", 660f, 0.22f, 0.25f);
+            _explodeClip = Resources.Load<AudioClip>("FinalProject/Sounds/explosion") ??
+                           CreateExplosionClip("Explosion", 0.7f, 0.45f);
         }
 
         private static void PlayBombEvent(int eventType, Vector3 position)
