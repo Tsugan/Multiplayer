@@ -1,4 +1,4 @@
-using TMPro;
+﻿using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -6,6 +6,8 @@ namespace Practice1
 {
     public class FinalProjectSceneBootstrap : MonoBehaviour
     {
+        public const string SceneRootName = "FinalProjectSceneObjects";
+
         private static AudioSource _audioSource;
         private static AudioClip _shotClip;
         private static AudioClip _pickupClip;
@@ -91,7 +93,19 @@ namespace Practice1
                 return;
             }
 
-            _arenaRoot = new GameObject("BombDisposalArenaPresentation");
+            GameObject sceneRoot = GameObject.Find(SceneRootName);
+            if (sceneRoot != null)
+            {
+                _arenaRoot = sceneRoot;
+                _bombVisual = FindChildGameObject(_arenaRoot.transform, "BombVisual");
+                _disposalZoneVisual = FindChildGameObject(_arenaRoot.transform, "DisposalZoneVisual");
+                _bombLight = _bombVisual != null
+                    ? _bombVisual.GetComponentInChildren<Light>(includeInactive: true)
+                    : null;
+                return;
+            }
+
+            _arenaRoot = new GameObject(SceneRootName);
             Material floor = CreateMaterial("ArenaFloor", new Color(0.16f, 0.18f, 0.18f));
             Material wall = CreateMaterial("ArenaWalls", new Color(0.08f, 0.09f, 0.10f));
             Material cover = CreateMaterial("ArenaCover", new Color(0.25f, 0.28f, 0.31f));
@@ -242,6 +256,31 @@ namespace Practice1
             primitive.transform.localScale = localScale;
             primitive.GetComponent<Renderer>().material = material;
             return primitive;
+        }
+
+        private static GameObject FindChildGameObject(Transform parent, string childName)
+        {
+            if (parent == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform child = parent.GetChild(i);
+                if (child.name == childName)
+                {
+                    return child.gameObject;
+                }
+
+                GameObject nested = FindChildGameObject(child, childName);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
         }
 
         private static Material CreateMaterial(string name, Color color)
