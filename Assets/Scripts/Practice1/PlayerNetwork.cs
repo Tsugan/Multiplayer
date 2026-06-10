@@ -29,11 +29,16 @@ namespace Practice1
             "Cover_C",
             "Cover_D"
         };
+        [SerializeField] private float _deathDebrisForce = 4.5f;
+        [SerializeField] private float _deathDebrisUpForce = 1.8f;
+        [SerializeField] private float _deathDebrisTorque = 9f;
+        [SerializeField] private float _deathDebrisMass = 0.35f;
 
         private CharacterController _characterController;
         private Renderer[] _renderers;
         private Collider[] _colliders;
         private Collider[] _spawnBlockedColliders = new Collider[0];
+        private GameObject _deathDebrisRoot;
         private Coroutine _respawnRoutine;
         private bool _isRespawning;
 
@@ -51,6 +56,7 @@ namespace Practice1
         {
             HP.OnChange -= OnHpChanged;
             IsAlive.OnChange -= OnIsAliveChanged;
+            ClearDeathDebris();
             Players.Remove(this);
         }
 
@@ -369,6 +375,15 @@ namespace Practice1
 
         private void ApplyAliveVisualState(bool alive)
         {
+            if (alive)
+            {
+                ClearDeathDebris();
+            }
+            else
+            {
+                SpawnDeathDebris();
+            }
+
             if (_renderers != null)
             {
                 for (int i = 0; i < _renderers.Length; i++)
@@ -384,12 +399,86 @@ namespace Practice1
             {
                 for (int i = 0; i < _colliders.Length; i++)
                 {
-                    if (_colliders[i] != null && _colliders[i].GetComponent<NetworkObject>() == null)
+                    if (_colliders[i] != null)
                     {
                         _colliders[i].enabled = alive;
                     }
                 }
             }
+
+            if (_characterController != null)
+            {
+                _characterController.enabled = alive;
+            }
+        }
+
+        private void SpawnDeathDebris()
+        {
+            if (_deathDebrisRoot != null || _renderers == null)
+            {
+                return;
+            }
+
+            _deathDebrisRoot = new GameObject($"{name}_DeathDebris");
+            Vector3 burstCenter = transform.position + Vector3.up * 0.8f;
+
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                if (_renderers[i] is not MeshRenderer sourceRenderer || !sourceRenderer.enabled)
+                {
+                    continue;
+                }
+
+                MeshFilter sourceFilter = sourceRenderer.GetComponent<MeshFilter>();
+                if (sourceFilter == null || sourceFilter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                GameObject debris = new GameObject($"{sourceRenderer.gameObject.name}_Debris");
+                debris.transform.SetParent(_deathDebrisRoot.transform);
+                debris.transform.SetPositionAndRotation(sourceRenderer.transform.position, sourceRenderer.transform.rotation);
+                debris.transform.localScale = sourceRenderer.transform.lossyScale;
+
+                MeshFilter debrisFilter = debris.AddComponent<MeshFilter>();
+                debrisFilter.sharedMesh = sourceFilter.sharedMesh;
+
+                MeshRenderer debrisRenderer = debris.AddComponent<MeshRenderer>();
+                debrisRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
+                debrisRenderer.shadowCastingMode = sourceRenderer.shadowCastingMode;
+                debrisRenderer.receiveShadows = sourceRenderer.receiveShadows;
+
+                BoxCollider debrisCollider = debris.AddComponent<BoxCollider>();
+                Bounds meshBounds = sourceFilter.sharedMesh.bounds;
+                debrisCollider.center = meshBounds.center;
+                debrisCollider.size = meshBounds.size;
+
+                Rigidbody body = debris.AddComponent<Rigidbody>();
+                body.mass = Mathf.Max(0.05f, _deathDebrisMass);
+                body.linearDamping = 0.15f;
+                body.angularDamping = 0.05f;
+
+                Vector3 direction = debris.transform.position - burstCenter;
+                if (direction.sqrMagnitude < 0.001f)
+                {
+                    direction = Random.insideUnitSphere;
+                }
+
+                direction.y = Mathf.Abs(direction.y) + 0.25f;
+                body.AddForce(direction.normalized * _deathDebrisForce + Vector3.up * _deathDebrisUpForce, ForceMode.Impulse);
+                body.AddTorque(Random.insideUnitSphere * _deathDebrisTorque, ForceMode.Impulse);
+            }
+        }
+
+        private void ClearDeathDebris()
+        {
+            if (_deathDebrisRoot == null)
+            {
+                return;
+            }
+
+            Destroy(_deathDebrisRoot);
+            _deathDebrisRoot = null;
         }
 
         public void HealOnServer(int amount)
