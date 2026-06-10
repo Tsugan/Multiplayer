@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using FishNet;
 using FishNet.Broadcast;
@@ -44,19 +45,6 @@ namespace Practice1
         public int BombEventType;
     }
 
-    [System.Serializable]
-    public struct ObjectiveBlockedArea
-    {
-        public Vector2 Center;
-        public Vector2 Size;
-
-        public ObjectiveBlockedArea(Vector2 center, Vector2 size)
-        {
-            Center = center;
-            Size = size;
-        }
-    }
-
     public class GameManager : MonoBehaviour
     {
         private const int ObjectiveSpawnAttempts = 64;
@@ -77,13 +65,13 @@ namespace Practice1
         [SerializeField] private Vector3 _randomObjectiveCenter = new Vector3(0f, 0f, 1f);
         [SerializeField] private float _randomObjectiveRadius = 7f;
         [SerializeField] private float _minimumObjectiveDistance = 6f;
-        [SerializeField] private float _objectiveBlockedPadding = 1.2f;
-        [SerializeField] private ObjectiveBlockedArea[] _objectiveBlockedAreas =
+        [SerializeField] private float _objectiveColliderPadding;
+        [SerializeField] private string[] _objectiveBlockedColliderNames =
         {
-            new ObjectiveBlockedArea(new Vector2(-4.5f, -2f), new Vector2(3f, 1.1f)),
-            new ObjectiveBlockedArea(new Vector2(4.5f, 4f), new Vector2(3f, 1.1f)),
-            new ObjectiveBlockedArea(new Vector2(-4f, 6.5f), new Vector2(1.2f, 3.2f)),
-            new ObjectiveBlockedArea(new Vector2(4f, -5f), new Vector2(1.2f, 3.2f))
+            "Cover_A",
+            "Cover_B",
+            "Cover_C",
+            "Cover_D"
         };
         [SerializeField] private float _bombFuseDuration = 10f;
         [SerializeField] private float _bombRespawnDelay = 4f;
@@ -103,6 +91,7 @@ namespace Practice1
         private int _bombCarrierOwnerId = -1;
         private int _bombEventId;
         private int _bombEventType;
+        private Collider[] _objectiveBlockedColliders = new Collider[0];
 
         public GameState CurrentState { get; private set; } = GameState.WaitingForPlayers;
         public int ConnectedPlayers { get; private set; }
@@ -610,27 +599,89 @@ namespace Practice1
             );
         }
 
-        private bool IsObjectivePointBlocked(Vector3 point)
+        private void RefreshObjectiveBlockedColliders()
         {
-            if (_objectiveBlockedAreas == null)
+            if (_objectiveBlockedColliderNames == null || _objectiveBlockedColliderNames.Length == 0)
             {
-                return false;
+                _objectiveBlockedColliders = new Collider[0];
+                return;
             }
 
-            float padding = Mathf.Max(0f, _objectiveBlockedPadding);
-            for (int i = 0; i < _objectiveBlockedAreas.Length; i++)
+            List<Collider> colliders = new List<Collider>();
+            for (int i = 0; i < _objectiveBlockedColliderNames.Length; i++)
             {
-                ObjectiveBlockedArea area = _objectiveBlockedAreas[i];
-                float halfX = Mathf.Abs(area.Size.x) * 0.5f + padding;
-                float halfZ = Mathf.Abs(area.Size.y) * 0.5f + padding;
-                if (Mathf.Abs(point.x - area.Center.x) <= halfX &&
-                    Mathf.Abs(point.z - area.Center.y) <= halfZ)
+                string objectName = _objectiveBlockedColliderNames[i];
+                if (string.IsNullOrWhiteSpace(objectName))
+                {
+                    continue;
+                }
+
+                GameObject blockedObject = GameObject.Find(objectName);
+                if (blockedObject == null)
+                {
+                    continue;
+                }
+
+                blockedObject.GetComponentsInChildren(includeInactive: true, colliders);
+            }
+
+            _objectiveBlockedColliders = colliders.ToArray();
+        }
+
+        private bool IsObjectivePointBlocked(Vector3 point)
+        {
+            if (_objectiveBlockedColliders == null || _objectiveBlockedColliders.Length == 0)
+            {
+                RefreshObjectiveBlockedColliders();
+            }
+
+            float padding = Mathf.Max(0f, _objectiveColliderPadding);
+            bool shouldRefresh = false;
+            for (int i = 0; i < _objectiveBlockedColliders.Length; i++)
+            {
+                Collider blockedCollider = _objectiveBlockedColliders[i];
+                if (blockedCollider == null)
+                {
+                    shouldRefresh = true;
+                    continue;
+                }
+
+                if (!blockedCollider.enabled || !blockedCollider.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (IsPointInsideColliderFootprint(blockedCollider, point, padding))
                 {
                     return true;
                 }
             }
 
+            if (shouldRefresh)
+            {
+                RefreshObjectiveBlockedColliders();
+            }
+
             return false;
+        }
+
+        private static bool IsPointInsideColliderFootprint(Collider blockedCollider, Vector3 point, float padding)
+        {
+            if (blockedCollider is BoxCollider boxCollider)
+            {
+                Vector3 localPoint = boxCollider.transform.InverseTransformPoint(point) - boxCollider.center;
+                Vector3 scale = boxCollider.transform.lossyScale;
+                float localPaddingX = padding / Mathf.Max(Mathf.Abs(scale.x), 0.001f);
+                float localPaddingZ = padding / Mathf.Max(Mathf.Abs(scale.z), 0.001f);
+                return Mathf.Abs(localPoint.x) <= boxCollider.size.x * 0.5f + localPaddingX &&
+                       Mathf.Abs(localPoint.z) <= boxCollider.size.z * 0.5f + localPaddingZ;
+            }
+
+            Bounds bounds = blockedCollider.bounds;
+            return point.x >= bounds.min.x - padding &&
+                   point.x <= bounds.max.x + padding &&
+                   point.z >= bounds.min.z - padding &&
+                   point.z <= bounds.max.z + padding;
         }
 
         private static Vector3 ToBombHeight(Vector3 position)
