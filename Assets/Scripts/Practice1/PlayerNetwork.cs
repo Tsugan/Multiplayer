@@ -95,6 +95,7 @@ namespace Practice1
             if (next <= 0 && IsAlive.Value && !_isRespawning)
             {
                 IsAlive.Value = false;
+                GameManager.Instance?.OnPlayerDowned(this);
                 _respawnRoutine = StartCoroutine(RespawnRoutine());
             }
         }
@@ -228,14 +229,7 @@ namespace Practice1
                 return;
             }
 
-            int previousHp = HP.Value;
-            int nextHp = Mathf.Max(0, previousHp - sanitizedDamage);
-            if (previousHp > 0 && nextHp <= 0 && attackerOwnerId >= 0 && attackerOwnerId != OwnerId)
-            {
-                GameManager.Instance?.AddScoreForClient(attackerOwnerId, 1);
-            }
-
-            HP.Value = nextHp;
+            HP.Value = Mathf.Max(0, HP.Value - sanitizedDamage);
         }
 
         public void ResetForMatchOnServer(bool resetScore)

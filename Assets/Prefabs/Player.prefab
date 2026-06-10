@@ -370,7 +370,7 @@ MonoBehaviour:
   _componentIndexCache: 6
   _addedNetworkObject: {fileID: 1656979142419317421}
   _networkObjectCache: {fileID: 1656979142419317421}
-  _offset: {x: 0, y: 8, z: -6}
+  _offset: {x: 0, y: 12, z: -8}
   _lookAtPlayer: 1
 --- !u!1 &9189670271575853252
 GameObject:

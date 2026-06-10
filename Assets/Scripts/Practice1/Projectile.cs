@@ -83,6 +83,7 @@ namespace Practice1
                 return;
             }
 
+            GameManager.Instance?.ExplodeBombFromHit(target, _shooterClientId);
             target.ApplyDamageOnServer(_damage, _shooterClientId);
 
             if (NetworkObject != null && NetworkObject.IsSpawned)

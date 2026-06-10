@@ -10,6 +10,7 @@ namespace Practice1
         private PlayerNetwork _playerNetwork;
         private string _nicknameValue = "Player";
         private int _hpValue = 100;
+        private int _scoreValue;
         private Canvas _uiCanvas;
         private RectTransform _labelRect;
         private TextMeshProUGUI _labelText;
@@ -23,9 +24,11 @@ namespace Practice1
         {
             _playerNetwork.Nickname.OnChange += OnNicknameChanged;
             _playerNetwork.HP.OnChange += OnHpChanged;
+            _playerNetwork.Score.OnChange += OnScoreChanged;
 
             OnNicknameChanged(string.Empty, _playerNetwork.Nickname.Value, false);
             OnHpChanged(0, _playerNetwork.HP.Value, false);
+            OnScoreChanged(0, _playerNetwork.Score.Value, false);
             EnsureLabel();
         }
 
@@ -33,6 +36,7 @@ namespace Practice1
         {
             _playerNetwork.Nickname.OnChange -= OnNicknameChanged;
             _playerNetwork.HP.OnChange -= OnHpChanged;
+            _playerNetwork.Score.OnChange -= OnScoreChanged;
 
             if (_labelRect != null)
             {
@@ -80,6 +84,8 @@ namespace Practice1
             {
                 _labelRect.anchoredPosition = localPoint;
             }
+
+            RefreshLabelText();
         }
 
         private void OnNicknameChanged(string oldValue, string newValue, bool asServer)
@@ -91,6 +97,12 @@ namespace Practice1
         private void OnHpChanged(int oldValue, int newValue, bool asServer)
         {
             _hpValue = newValue;
+            RefreshLabelText();
+        }
+
+        private void OnScoreChanged(int oldValue, int newValue, bool asServer)
+        {
+            _scoreValue = newValue;
             RefreshLabelText();
         }
 
@@ -111,7 +123,7 @@ namespace Practice1
             labelObject.transform.SetParent(_uiCanvas.transform, false);
 
             _labelRect = labelObject.GetComponent<RectTransform>();
-            _labelRect.sizeDelta = new Vector2(160f, 48f);
+            _labelRect.sizeDelta = new Vector2(180f, 72f);
             _labelRect.anchorMin = new Vector2(0.5f, 0.5f);
             _labelRect.anchorMax = new Vector2(0.5f, 0.5f);
             _labelRect.pivot = new Vector2(0.5f, 0.5f);
@@ -129,7 +141,11 @@ namespace Practice1
         {
             if (_labelText != null)
             {
-                _labelText.text = $"{_nicknameValue}\nHP: {_hpValue}";
+                bool carriesBomb = GameManager.Instance != null &&
+                                   GameManager.Instance.BombCarrierOwnerId == _playerNetwork.OwnerId;
+                _labelText.color = carriesBomb ? new Color(1f, 0.86f, 0.18f) : Color.white;
+                string bombLine = carriesBomb ? "\nBOMB" : string.Empty;
+                _labelText.text = $"{_nicknameValue}\nHP: {_hpValue} | Score: {_scoreValue}{bombLine}";
             }
         }
     }

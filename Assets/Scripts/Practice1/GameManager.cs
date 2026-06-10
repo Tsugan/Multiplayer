@@ -15,6 +15,14 @@ namespace Practice1
         ShowingResults
     }
 
+    public enum BombPhase
+    {
+        Waiting,
+        Carried,
+        Dropped,
+        Respawning
+    }
+
     public struct GameStateBroadcast : IBroadcast
     {
         public int State;
@@ -24,23 +32,50 @@ namespace Practice1
         public float StartCountdown;
         public float ResultsTimeLeft;
         public string ResultsText;
+        public int BombPhase;
+        public int BombCarrierOwnerId;
+        public string BombCarrierName;
+        public Vector3 BombPosition;
+        public Vector3 DisposalZonePosition;
+        public float BombFuseLeft;
+        public float BombRespawnLeft;
+        public string ObjectiveText;
+        public int BombEventId;
+        public int BombEventType;
     }
 
     public class GameManager : MonoBehaviour
     {
         public static GameManager Instance { get; private set; }
 
+        [Header("Session")]
         [SerializeField] private int _requiredPlayers = 2;
-        [SerializeField] private float _matchDuration = 60f;
+        [SerializeField] private float _matchDuration = 120f;
         [SerializeField] private float _lobbyStartDelay = 3f;
-        [SerializeField] private float _resultsDuration = 5f;
-        [SerializeField] private int _scoreToWin = 3;
+        [SerializeField] private float _resultsDuration = 8f;
         [SerializeField] private float _broadcastInterval = 0.25f;
+
+        [Header("Bomb Disposal")]
+        [SerializeField] private Vector3 _bombSpawnPosition = new Vector3(0f, 1f, 0f);
+        [SerializeField] private Vector3 _disposalZonePosition = new Vector3(0f, 0.05f, 8f);
+        [SerializeField] private float _bombFuseDuration = 10f;
+        [SerializeField] private float _bombRespawnDelay = 4f;
+        [SerializeField] private float _pickupRadius = 2f;
+        [SerializeField] private float _disposalRadius = 2.4f;
+        [SerializeField] private float _explosionRadius = 4f;
+        [SerializeField] private int _explosionDamage = 100;
+        [SerializeField] private int _carryScorePerTick = 1;
+        [SerializeField] private float _carryScoreInterval = 1f;
+        [SerializeField] private int _disposalScore = 15;
 
         private NetworkManager _networkManager;
         private bool _clientBroadcastRegistered;
         private bool _serverConnectionRegistered;
         private float _broadcastTimer;
+        private float _carryScoreTimer;
+        private int _bombCarrierOwnerId = -1;
+        private int _bombEventId;
+        private int _bombEventType;
 
         public GameState CurrentState { get; private set; } = GameState.WaitingForPlayers;
         public int ConnectedPlayers { get; private set; }
@@ -49,6 +84,16 @@ namespace Practice1
         public float StartCountdown { get; private set; }
         public float ResultsTimeLeft { get; private set; }
         public string ResultsText { get; private set; } = string.Empty;
+        public BombPhase CurrentBombPhase { get; private set; } = BombPhase.Waiting;
+        public int BombCarrierOwnerId => _bombCarrierOwnerId;
+        public string BombCarrierName { get; private set; } = string.Empty;
+        public Vector3 BombPosition { get; private set; }
+        public Vector3 DisposalZonePosition => _disposalZonePosition;
+        public float BombFuseLeft { get; private set; }
+        public float BombRespawnLeft { get; private set; }
+        public string ObjectiveText { get; private set; } = "Pick up the bomb and dispose it.";
+        public int BombEventId => _bombEventId;
+        public int BombEventType => _bombEventType;
 
         public static bool IsGameplayActive =>
             Instance == null || Instance.CurrentState == GameState.InProgress;
@@ -62,8 +107,11 @@ namespace Practice1
             }
 
             Instance = this;
+            _matchDuration = 120f;
             MatchTimeLeft = _matchDuration;
             StartCountdown = _lobbyStartDelay;
+            BombPosition = _bombSpawnPosition;
+            ObjectiveText = "Wait for the match to start.";
         }
 
         private void OnDestroy()
@@ -114,10 +162,93 @@ namespace Practice1
             }
 
             scorer.Score.Value += Mathf.Max(0, amount);
-            if (_scoreToWin > 0 && scorer.Score.Value >= _scoreToWin)
+        }
+
+        public bool IsBombCarrier(PlayerNetwork player)
+        {
+            return player != null && CurrentBombPhase == BombPhase.Carried && player.OwnerId == _bombCarrierOwnerId;
+        }
+
+        public void TryPickupBomb(PlayerNetwork player)
+        {
+            if (!CanUseBomb(player) || CurrentBombPhase == BombPhase.Carried || CurrentBombPhase == BombPhase.Respawning)
             {
-                EndMatch();
+                return;
             }
+
+            if (Vector3.Distance(player.transform.position, BombPosition) > _pickupRadius)
+            {
+                return;
+            }
+
+            _bombCarrierOwnerId = player.OwnerId;
+            BombCarrierName = GetPlayerName(player);
+            CurrentBombPhase = BombPhase.Carried;
+            BombFuseLeft = BombFuseLeft > 0f ? BombFuseLeft : _bombFuseDuration;
+            BombRespawnLeft = 0f;
+            _carryScoreTimer = 0f;
+            ObjectiveText = $"{BombCarrierName} is carrying the bomb. Dispose it in {BombFuseLeft:0.0}s.";
+            RegisterBombEvent(1);
+            BroadcastState();
+        }
+
+        public void TryThrowBomb(PlayerNetwork player)
+        {
+            if (!CanUseBomb(player) || !IsBombCarrier(player))
+            {
+                return;
+            }
+
+            Vector3 forward = player.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.01f)
+            {
+                forward = Vector3.forward;
+            }
+
+            BombPosition = player.transform.position + forward.normalized * 2.2f + Vector3.up * 0.4f;
+            _bombCarrierOwnerId = -1;
+            BombCarrierName = string.Empty;
+            CurrentBombPhase = BombPhase.Dropped;
+            ObjectiveText = $"Bomb dropped. Fuse: {BombFuseLeft:0.0}s.";
+            RegisterBombEvent(2);
+            BroadcastState();
+        }
+
+        public void TryDisposeBomb(PlayerNetwork player)
+        {
+            if (!CanUseBomb(player) || !IsBombCarrier(player))
+            {
+                return;
+            }
+
+            if (Vector3.Distance(player.transform.position, _disposalZonePosition) > _disposalRadius)
+            {
+                return;
+            }
+
+            AddScoreForClient(player.OwnerId, _disposalScore);
+            StartBombRespawn($"{GetPlayerName(player)} disposed the bomb (+{_disposalScore}).", 3);
+        }
+
+        public void ExplodeBombFromHit(PlayerNetwork target, int attackerOwnerId)
+        {
+            if (!InstanceFinder.IsServerStarted || CurrentState != GameState.InProgress || !IsBombCarrier(target))
+            {
+                return;
+            }
+
+            ExplodeBomb(target.transform.position, $"{GetPlayerName(target)} was hit. Bomb exploded.");
+        }
+
+        public void OnPlayerDowned(PlayerNetwork player)
+        {
+            if (!InstanceFinder.IsServerStarted || CurrentState != GameState.InProgress || !IsBombCarrier(player))
+            {
+                return;
+            }
+
+            ExplodeBomb(player.transform.position, $"{GetPlayerName(player)} went down with the bomb.");
         }
 
         private void BindNetworkManager()
@@ -153,6 +284,11 @@ namespace Practice1
             }
 
             RefreshConnectedPlayers();
+            if (_bombCarrierOwnerId >= 0 && FindPlayerByOwnerId(_bombCarrierOwnerId) == null)
+            {
+                StartBombRespawn("Bomb carrier disconnected.", 4);
+            }
+
             BroadcastState();
         }
 
@@ -167,6 +303,7 @@ namespace Practice1
                     break;
                 case GameState.InProgress:
                     TickMatch();
+                    TickBomb();
                     break;
                 case GameState.ShowingResults:
                     TickResults();
@@ -178,6 +315,7 @@ namespace Practice1
         {
             MatchTimeLeft = _matchDuration;
             ResultsTimeLeft = 0f;
+            ResetBombToWaiting("Wait for the match to start.");
 
             if (ConnectedPlayers < RequiredPlayers)
             {
@@ -201,6 +339,67 @@ namespace Practice1
             }
         }
 
+        private void TickBomb()
+        {
+            switch (CurrentBombPhase)
+            {
+                case BombPhase.Carried:
+                    TickCarriedBomb();
+                    break;
+                case BombPhase.Dropped:
+                    TickDroppedBomb();
+                    break;
+                case BombPhase.Respawning:
+                    BombRespawnLeft = Mathf.Max(0f, BombRespawnLeft - Time.deltaTime);
+                    if (BombRespawnLeft <= 0f)
+                    {
+                        ResetBombToWaiting("Bomb respawned. Pick it up and dispose it.");
+                        RegisterBombEvent(5);
+                    }
+                    break;
+                default:
+                    ObjectiveText = "Pick up the bomb and dispose it.";
+                    break;
+            }
+        }
+
+        private void TickCarriedBomb()
+        {
+            PlayerNetwork carrier = FindPlayerByOwnerId(_bombCarrierOwnerId);
+            if (carrier == null || !carrier.IsAlive.Value)
+            {
+                ExplodeBomb(BombPosition, "Bomb carrier lost.");
+                return;
+            }
+
+            BombPosition = carrier.transform.position + Vector3.up * 1.25f;
+            BombFuseLeft = Mathf.Max(0f, BombFuseLeft - Time.deltaTime);
+            _carryScoreTimer += Time.deltaTime;
+
+            if (_carryScoreTimer >= _carryScoreInterval)
+            {
+                int ticks = Mathf.FloorToInt(_carryScoreTimer / _carryScoreInterval);
+                _carryScoreTimer -= ticks * _carryScoreInterval;
+                AddScoreForClient(carrier.OwnerId, ticks * _carryScorePerTick);
+            }
+
+            ObjectiveText = $"{BombCarrierName}: carry score +{_carryScorePerTick}/s, fuse {BombFuseLeft:0.0}s.";
+            if (BombFuseLeft <= 0f)
+            {
+                ExplodeBomb(carrier.transform.position, "Fuse expired. Bomb exploded.");
+            }
+        }
+
+        private void TickDroppedBomb()
+        {
+            BombFuseLeft = Mathf.Max(0f, BombFuseLeft - Time.deltaTime);
+            ObjectiveText = $"Bomb is dropped. Fuse {BombFuseLeft:0.0}s.";
+            if (BombFuseLeft <= 0f)
+            {
+                ExplodeBomb(BombPosition, "Dropped bomb exploded.");
+            }
+        }
+
         private void TickResults()
         {
             ResultsTimeLeft = Mathf.Max(0f, ResultsTimeLeft - Time.deltaTime);
@@ -215,8 +414,9 @@ namespace Practice1
             ResetPlayersForRound(resetScore: true);
             MatchTimeLeft = _matchDuration;
             ResultsText = string.Empty;
+            ResetBombToWaiting("Pick up the bomb and bring it to the disposal zone.");
             CurrentState = GameState.InProgress;
-            Debug.Log("[Server] Match started.");
+            Debug.Log("[Server] Bomb Disposal match started.");
             BroadcastState();
         }
 
@@ -227,6 +427,7 @@ namespace Practice1
                 return;
             }
 
+            StartBombRespawn("Match ended.", 0);
             ResultsText = BuildResultsText();
             ResultsTimeLeft = _resultsDuration;
             CurrentState = GameState.ShowingResults;
@@ -241,6 +442,7 @@ namespace Practice1
             StartCountdown = _lobbyStartDelay;
             ResultsTimeLeft = 0f;
             CurrentState = GameState.WaitingForPlayers;
+            ResetBombToWaiting("Wait for the match to start.");
             Debug.Log("[Server] Lobby reset. Waiting for players.");
             BroadcastState();
         }
@@ -254,6 +456,68 @@ namespace Practice1
                     player.ResetForMatchOnServer(resetScore);
                 }
             }
+        }
+
+        private void ResetBombToWaiting(string objectiveText)
+        {
+            CurrentBombPhase = BombPhase.Waiting;
+            _bombCarrierOwnerId = -1;
+            BombCarrierName = string.Empty;
+            BombPosition = _bombSpawnPosition;
+            BombFuseLeft = 0f;
+            BombRespawnLeft = 0f;
+            _carryScoreTimer = 0f;
+            ObjectiveText = objectiveText;
+        }
+
+        private void StartBombRespawn(string objectiveText, int eventType)
+        {
+            CurrentBombPhase = BombPhase.Respawning;
+            _bombCarrierOwnerId = -1;
+            BombCarrierName = string.Empty;
+            BombFuseLeft = 0f;
+            BombRespawnLeft = _bombRespawnDelay;
+            _carryScoreTimer = 0f;
+            ObjectiveText = objectiveText;
+            RegisterBombEvent(eventType);
+            BroadcastState();
+        }
+
+        private void ExplodeBomb(Vector3 explosionPosition, string objectiveText)
+        {
+            BombPosition = explosionPosition;
+            CurrentBombPhase = BombPhase.Respawning;
+            _bombCarrierOwnerId = -1;
+            BombCarrierName = string.Empty;
+            BombFuseLeft = 0f;
+            BombRespawnLeft = _bombRespawnDelay;
+            _carryScoreTimer = 0f;
+            ObjectiveText = objectiveText;
+            RegisterBombEvent(4);
+
+            foreach (PlayerNetwork player in PlayerNetwork.ActivePlayers)
+            {
+                if (player == null || !player.IsServerInitialized || !player.IsAlive.Value)
+                {
+                    continue;
+                }
+
+                if (Vector3.Distance(player.transform.position, explosionPosition) <= _explosionRadius)
+                {
+                    player.ApplyDamageOnServer(_explosionDamage, -1);
+                }
+            }
+
+            BroadcastState();
+        }
+
+        private bool CanUseBomb(PlayerNetwork player)
+        {
+            return InstanceFinder.IsServerStarted &&
+                   CurrentState == GameState.InProgress &&
+                   player != null &&
+                   player.IsServerInitialized &&
+                   player.IsAlive.Value;
         }
 
         private void RefreshConnectedPlayers()
@@ -288,6 +552,18 @@ namespace Practice1
             return null;
         }
 
+        private static string GetPlayerName(PlayerNetwork player)
+        {
+            if (player == null)
+            {
+                return "Player";
+            }
+
+            return string.IsNullOrWhiteSpace(player.Nickname.Value)
+                ? $"Player_{player.OwnerId}"
+                : player.Nickname.Value;
+        }
+
         private string BuildResultsText()
         {
             StringBuilder builder = new StringBuilder();
@@ -305,10 +581,7 @@ namespace Practice1
                     winner = player;
                 }
 
-                string nickname = string.IsNullOrWhiteSpace(player.Nickname.Value)
-                    ? $"Player_{player.OwnerId}"
-                    : player.Nickname.Value;
-                builder.AppendLine($"{nickname}: {player.Score.Value}");
+                builder.AppendLine($"{GetPlayerName(player)}: {player.Score.Value}");
             }
 
             if (builder.Length == 0)
@@ -317,13 +590,21 @@ namespace Practice1
             }
             else if (winner != null)
             {
-                string nickname = string.IsNullOrWhiteSpace(winner.Nickname.Value)
-                    ? $"Player_{winner.OwnerId}"
-                    : winner.Nickname.Value;
-                builder.Insert(0, $"Winner: {nickname}\n");
+                builder.Insert(0, $"Winner: {GetPlayerName(winner)}\n");
             }
 
             return builder.ToString().TrimEnd();
+        }
+
+        private void RegisterBombEvent(int eventType)
+        {
+            if (eventType <= 0)
+            {
+                return;
+            }
+
+            _bombEventId++;
+            _bombEventType = eventType;
         }
 
         private void BroadcastStateIfNeeded()
@@ -353,7 +634,17 @@ namespace Practice1
                 MatchTimeLeft = MatchTimeLeft,
                 StartCountdown = StartCountdown,
                 ResultsTimeLeft = ResultsTimeLeft,
-                ResultsText = ResultsText
+                ResultsText = ResultsText,
+                BombPhase = (int)CurrentBombPhase,
+                BombCarrierOwnerId = _bombCarrierOwnerId,
+                BombCarrierName = BombCarrierName,
+                BombPosition = BombPosition,
+                DisposalZonePosition = _disposalZonePosition,
+                BombFuseLeft = BombFuseLeft,
+                BombRespawnLeft = BombRespawnLeft,
+                ObjectiveText = ObjectiveText,
+                BombEventId = _bombEventId,
+                BombEventType = _bombEventType
             };
 
             ApplyBroadcast(message);
@@ -374,6 +665,16 @@ namespace Practice1
             ResultsTimeLeft = message.ResultsTimeLeft;
             ResultsText = message.ResultsText ?? string.Empty;
             _requiredPlayers = Mathf.Max(1, message.RequiredPlayers);
+            CurrentBombPhase = (BombPhase)message.BombPhase;
+            _bombCarrierOwnerId = message.BombCarrierOwnerId;
+            BombCarrierName = message.BombCarrierName ?? string.Empty;
+            BombPosition = message.BombPosition;
+            _disposalZonePosition = message.DisposalZonePosition;
+            BombFuseLeft = message.BombFuseLeft;
+            BombRespawnLeft = message.BombRespawnLeft;
+            ObjectiveText = message.ObjectiveText ?? string.Empty;
+            _bombEventId = message.BombEventId;
+            _bombEventType = message.BombEventType;
         }
     }
 }

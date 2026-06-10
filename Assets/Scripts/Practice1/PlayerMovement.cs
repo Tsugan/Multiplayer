@@ -10,12 +10,14 @@ namespace Practice1
     {
         public float Horizontal;
         public float Vertical;
+        public float AimYaw;
         private uint _tick;
 
-        public MoveData(Vector2 input)
+        public MoveData(Vector2 input, float aimYaw)
         {
             Horizontal = input.x;
             Vertical = input.y;
+            AimYaw = aimYaw;
             _tick = 0;
         }
 
@@ -30,12 +32,14 @@ namespace Practice1
     public struct ReconcileData : IReconcileData
     {
         public Vector3 Position;
+        public float AimYaw;
         public float VerticalVelocity;
         private uint _tick;
 
-        public ReconcileData(Vector3 position, float verticalVelocity)
+        public ReconcileData(Vector3 position, float aimYaw, float verticalVelocity)
         {
             Position = position;
+            AimYaw = aimYaw;
             VerticalVelocity = verticalVelocity;
             _tick = 0;
         }
@@ -93,14 +97,15 @@ namespace Practice1
             if (base.IsOwner && canMove)
             {
                 Vector2 input = ReadMoveInput();
+                float aimYaw = ReadAimYaw(transform.position, transform.eulerAngles.y);
                 if (ClientSidePredictionEnabled || base.IsServerInitialized)
                 {
-                    Replicate(new MoveData(input));
+                    Replicate(new MoveData(input, aimYaw));
                     replicated = true;
                 }
                 else
                 {
-                    SubmitMoveInputServerRpc(input.x, input.y, Channel.Unreliable);
+                    SubmitMoveInputServerRpc(input.x, input.y, aimYaw, Channel.Unreliable);
                     waitsForServerMovement = true;
                 }
             }
@@ -129,15 +134,15 @@ namespace Practice1
         }
 
         [ServerRpc]
-        private void SubmitMoveInputServerRpc(float horizontal, float vertical, Channel channel = Channel.Reliable)
+        private void SubmitMoveInputServerRpc(float horizontal, float vertical, float aimYaw, Channel channel = Channel.Reliable)
         {
-            _serverAuthoritativeMoveData = new MoveData(new Vector2(horizontal, vertical));
+            _serverAuthoritativeMoveData = new MoveData(new Vector2(horizontal, vertical), aimYaw);
             _hasServerAuthoritativeMoveData = true;
         }
 
         public override void CreateReconcile()
         {
-            Reconcile(new ReconcileData(transform.position, _verticalVelocity));
+            Reconcile(new ReconcileData(transform.position, transform.eulerAngles.y, _verticalVelocity));
         }
 
         [Replicate]
@@ -149,6 +154,7 @@ namespace Practice1
             }
 
             float tickDelta = (float)base.TimeManager.TickDelta;
+            transform.rotation = Quaternion.Euler(0f, data.AimYaw, 0f);
             Vector3 move = new Vector3(data.Horizontal, 0f, data.Vertical);
             if (move.sqrMagnitude > 1f)
             {
@@ -185,6 +191,7 @@ namespace Practice1
             }
 
             transform.position = data.Position;
+            transform.rotation = Quaternion.Euler(0f, data.AimYaw, 0f);
             _verticalVelocity = data.VerticalVelocity;
 
             if (restoreCharacterController)
@@ -224,6 +231,37 @@ namespace Practice1
             }
 
             return new Vector2(x, y);
+        }
+
+        private static float ReadAimYaw(Vector3 playerPosition, float fallbackYaw)
+        {
+            if (Mouse.current == null || Camera.main == null)
+            {
+                Vector2 input = ReadMoveInput();
+                if (input.sqrMagnitude > 0.01f)
+                {
+                    return Mathf.Atan2(input.x, input.y) * Mathf.Rad2Deg;
+                }
+
+                return fallbackYaw;
+            }
+
+            Ray ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
+            Plane ground = new Plane(Vector3.up, new Vector3(0f, playerPosition.y, 0f));
+            if (!ground.Raycast(ray, out float distance))
+            {
+                return fallbackYaw;
+            }
+
+            Vector3 point = ray.GetPoint(distance);
+            Vector3 direction = point - playerPosition;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.01f)
+            {
+                return fallbackYaw;
+            }
+
+            return Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
         }
     }
 }

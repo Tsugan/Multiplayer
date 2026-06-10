@@ -48,9 +48,21 @@ namespace Practice1
                 return;
             }
 
-            if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            bool shootPressed = Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
+            shootPressed |= Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+            if (shootPressed)
             {
                 TryShoot();
+            }
+
+            if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+            {
+                InteractBombServerRpc();
+            }
+
+            if (Keyboard.current != null && Keyboard.current.qKey.wasPressedThisFrame)
+            {
+                ThrowBombServerRpc();
             }
         }
 
@@ -117,6 +129,49 @@ namespace Practice1
             {
                 base.ServerManager.Spawn(projectileNetworkObject, sender);
             }
+
+            ShotFiredObserversRpc(shotPosition);
+        }
+
+        [ServerRpc]
+        private void InteractBombServerRpc()
+        {
+            if (!GameManager.IsGameplayActive || _playerNetwork == null || _playerNetwork.IsDead)
+            {
+                return;
+            }
+
+            GameManager manager = GameManager.Instance;
+            if (manager == null)
+            {
+                return;
+            }
+
+            if (manager.IsBombCarrier(_playerNetwork))
+            {
+                manager.TryDisposeBomb(_playerNetwork);
+            }
+            else
+            {
+                manager.TryPickupBomb(_playerNetwork);
+            }
+        }
+
+        [ServerRpc]
+        private void ThrowBombServerRpc()
+        {
+            if (!GameManager.IsGameplayActive || _playerNetwork == null || _playerNetwork.IsDead)
+            {
+                return;
+            }
+
+            GameManager.Instance?.TryThrowBomb(_playerNetwork);
+        }
+
+        [ObserversRpc]
+        private void ShotFiredObserversRpc(Vector3 shotPosition)
+        {
+            FinalProjectSceneBootstrap.PlayShotSound(shotPosition);
         }
 
         public void ResetAmmoOnServer()

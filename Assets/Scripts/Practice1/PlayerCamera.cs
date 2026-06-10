@@ -5,7 +5,7 @@ namespace Practice1
 {
     public class PlayerCamera : NetworkBehaviour
     {
-        [SerializeField] private Vector3 _offset = new Vector3(0f, 8f, -6f);
+        [SerializeField] private Vector3 _offset = new Vector3(0f, 12f, -8f);
         [SerializeField] private bool _lookAtPlayer = true;
 
         private Camera _mainCamera;

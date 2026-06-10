@@ -119,9 +119,14 @@ namespace Practice1
 
             if (_ammoText != null)
             {
+                GameManager gameManager = GameManager.Instance;
+                int score = _localPlayer == null ? 0 : _localPlayer.Score.Value;
+                string bombInfo = gameManager == null
+                    ? "Bomb: -"
+                    : BuildBombInfo(gameManager);
                 _ammoText.text = _localShooting == null
                     ? "Ammo: -"
-                    : $"Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo} | Score: {(_localPlayer == null ? 0 : _localPlayer.Score.Value)}";
+                    : $"Score: {score} | Ammo: {_localShooting.CurrentAmmo.Value}/{_localShooting.MaxAmmo}\n{bombInfo}";
             }
 
             UpdateRespawnUi();
@@ -237,8 +242,8 @@ namespace Practice1
         {
             ConfigureHudText(_modeText, new Vector2(16f, -12f), new Vector2(470f, 52f), 17f);
             ConfigureHudText(_nicknameText, new Vector2(16f, -68f), new Vector2(470f, 24f), 18f);
-            ConfigureHudText(_ammoText, new Vector2(16f, -96f), new Vector2(470f, 24f), 18f);
-            ConfigureHudText(_respawnText, new Vector2(16f, -132f), new Vector2(470f, 84f), 21f);
+            ConfigureHudText(_ammoText, new Vector2(16f, -96f), new Vector2(520f, 52f), 18f);
+            ConfigureHudText(_respawnText, new Vector2(16f, -154f), new Vector2(560f, 120f), 20f);
         }
 
         private static void ConfigureHudText(TMP_Text text, Vector2 anchoredPosition, Vector2 size, float fontSize)
@@ -361,9 +366,22 @@ namespace Practice1
 
             if (_localPlayer.IsAlive.Value)
             {
-                _respawnText.text = _localShooting != null && !_localShooting.HasAmmo
-                    ? "No ammo. Respawn to refill."
-                    : string.Empty;
+                GameManager gameManager = GameManager.Instance;
+                if (gameManager != null)
+                {
+                    bool carryingBomb = gameManager.BombCarrierOwnerId == _localPlayer.OwnerId;
+                    string controls = carryingBomb
+                        ? "Objective: run to disposal zone. E - dispose, Q - throw."
+                        : "Objective: E - pick bomb. LMB/Space - shoot carrier.";
+                    _respawnText.text = $"{gameManager.ObjectiveText}\n{controls}";
+                }
+                else
+                {
+                    _respawnText.text = _localShooting != null && !_localShooting.HasAmmo
+                        ? "No ammo. Respawn to refill."
+                        : string.Empty;
+                }
+
                 return;
             }
 
@@ -392,6 +410,21 @@ namespace Practice1
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        private static string BuildBombInfo(GameManager gameManager)
+        {
+            switch (gameManager.CurrentBombPhase)
+            {
+                case BombPhase.Carried:
+                    return $"Bomb: {gameManager.BombCarrierName} | Fuse: {gameManager.BombFuseLeft:0.0}s";
+                case BombPhase.Dropped:
+                    return $"Bomb: dropped | Fuse: {gameManager.BombFuseLeft:0.0}s";
+                case BombPhase.Respawning:
+                    return $"Bomb: respawn in {gameManager.BombRespawnLeft:0.0}s";
+                default:
+                    return "Bomb: ready at center";
             }
         }
     }

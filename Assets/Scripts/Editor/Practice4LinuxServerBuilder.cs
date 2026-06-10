@@ -10,6 +10,7 @@ namespace Practice1.Editor
         private const string OutputPath = "Builds/LinuxServer/MultiplayerServer.x86_64";
 
         [MenuItem("Practice 4/Build Linux Dedicated Server")]
+        [MenuItem("Final Project/Build Linux Dedicated Server")]
         public static void BuildLinuxDedicatedServer()
         {
             Directory.CreateDirectory(Path.GetDirectoryName(OutputPath));
