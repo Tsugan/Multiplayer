@@ -373,13 +373,39 @@ namespace Practice1
                 return;
             }
 
-            _bombVisual.transform.position = manager.BombPosition + Vector3.up * 0.35f;
+            _bombVisual.transform.position = GetBombVisualPosition(manager);
             float pulse = 1f + Mathf.Sin(Time.time * 8f) * 0.08f;
             _bombVisual.transform.localScale = Vector3.one * (0.8f * pulse);
             if (_bombLight != null)
             {
                 _bombLight.intensity = 1.6f + Mathf.PingPong(Time.time * 5f, 1.4f);
             }
+        }
+
+        private static Vector3 GetBombVisualPosition(GameManager manager)
+        {
+            if (manager.CurrentBombPhase == BombPhase.Carried &&
+                TryGetBombCarrier(manager.BombCarrierOwnerId, out PlayerNetwork carrier))
+            {
+                return carrier.transform.position + Vector3.up * 1.25f;
+            }
+
+            return manager.BombPosition + Vector3.up * 0.35f;
+        }
+
+        private static bool TryGetBombCarrier(int ownerId, out PlayerNetwork carrier)
+        {
+            foreach (PlayerNetwork player in PlayerNetwork.ActivePlayers)
+            {
+                if (player != null && player.IsSpawned && player.OwnerId == ownerId)
+                {
+                    carrier = player;
+                    return true;
+                }
+            }
+
+            carrier = null;
+            return false;
         }
 
         private static void UpdateBombSpawnMarker(GameObject marker, Vector3 bombPosition, float y, bool visible)
