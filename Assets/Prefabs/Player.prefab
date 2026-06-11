@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &453827920758180175
 GameObject:
@@ -1027,8 +1027,8 @@ Transform:
   m_GameObject: {fileID: 8043049317189779725}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: -0.35587}
+  m_LocalScale: {x: 1, y: 1, z: 0.61317}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 310325968862266978}
@@ -1125,8 +1125,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 26b716c41e9b56b4baafaf13a523ba2e, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   <IsNested>k__BackingField: 0
   WasActiveDuringEdit: 0
   WasActiveDuringEdit_Set1: 1
@@ -1189,7 +1189,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c9f9b70eb98aae841b4b6cef605a01b3, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerNetwork
   _componentIndexCache: 0
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1199,6 +1199,12 @@ MonoBehaviour:
   _spawnPoints:
   - {fileID: 0}
   _spawnPointTag: PlayerSpawn
+  _spawnBlockerPadding: 0.75
+  _spawnBlockedColliderNames:
+  - Cover_A
+  - Cover_B
+  - Cover_C
+  - Cover_D
 --- !u!114 &8778318481208707163
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1209,7 +1215,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a931155bbda555a489bcd60186b0ed9b, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerCombat
   _componentIndexCache: 1
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1225,7 +1231,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c0e6a165215262245a9f79c96f2777fe, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerInput
   _componentIndexCache: 2
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1240,7 +1246,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 77605ee0fa7f44b45971ce3311448b78, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerView
   _componentIndexCache: 3
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1255,7 +1261,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 70788ff67d718fc4bb7a7f9e6344e948, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerShooting
   _componentIndexCache: 4
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1301,7 +1307,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f8cd121c8790a2a46801fee1695025ce, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerMovement
   _componentIndexCache: 5
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1318,7 +1324,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3791c599afb9d63409e14ca903ced51d, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Practice1.PlayerCamera
   _componentIndexCache: 6
   _addedNetworkObject: {fileID: 1656979142419317421}
@@ -1440,8 +1446,8 @@ Transform:
   m_GameObject: {fileID: 8579196545675305424}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.047047}
+  m_LocalScale: {x: 1, y: 1, z: 1.5535}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5196131551249417763}
